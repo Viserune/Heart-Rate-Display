@@ -65,10 +65,6 @@ public sealed class BleHeartRateService : IDisposable
     private CancellationTokenSource? _reconnectCts;
     private volatile bool _userRequestedDisconnect;
 
-    private System.Threading.Timer? _demoTimer;
-    private readonly Random _rand = new();
-    private int _demoBpm = 72;
-
     private BleConnectionState _state = BleConnectionState.Disconnected;
 
     public BleHeartRateService(Action<Action> dispatch)
@@ -87,7 +83,6 @@ public sealed class BleHeartRateService : IDisposable
     public event Action? Disconnected;
 
     public BleConnectionState State => _state;
-    public bool IsDemoMode => _demoTimer != null;
     public string? ConnectedDeviceName { get; private set; }
 
     // ==================== 扫描 ====================
@@ -213,7 +208,6 @@ public sealed class BleHeartRateService : IDisposable
     {
         _userRequestedDisconnect = false;
         CancelReconnect();
-        await StopDemoInternalAsync();
 
         return await ConnectInternalAsync(deviceKey, deviceName, autoReconnect, quiet: false);
     }
@@ -227,7 +221,6 @@ public sealed class BleHeartRateService : IDisposable
     {
         _userRequestedDisconnect = false;
         CancelReconnect();
-        await StopDemoInternalAsync();
 
         // 1) 快速路径：上次设备可直接打开 → 直接连接
         if (await ProbeDeviceAsync(lastKey))
@@ -533,7 +526,6 @@ public sealed class BleHeartRateService : IDisposable
     /// <summary>用户主动断开。</summary>
     public async Task DisconnectAsync()
     {
-        await StopDemoInternalAsync();
         _userRequestedDisconnect = true;
         _reconnectAutoEnabled = false;
         CancelReconnect();
@@ -547,47 +539,6 @@ public sealed class BleHeartRateService : IDisposable
         _reconnectCts?.Cancel();
         _reconnectCts?.Dispose();
         _reconnectCts = null;
-    }
-
-    // ==================== 演示模式 ====================
-
-    public void StartDemo()
-    {
-        _userRequestedDisconnect = true;
-        _reconnectAutoEnabled = false;
-        CancelReconnect();
-        CleanupDevice();
-
-        _demoBpm = 70;
-        _demoTimer?.Dispose();
-        _demoTimer = new System.Threading.Timer(_ =>
-        {
-            _demoBpm += _rand.Next(-3, 4);
-            _demoBpm = Math.Clamp(_demoBpm, 55, 165);
-            RaiseHeartRate(_demoBpm);
-        }, null, 0, 1000);
-
-        ConnectedDeviceName = "演示模式";
-        SetState(BleConnectionState.Connected);
-        RaiseStatus("演示模式：正在输出模拟心率");
-    }
-
-    public async Task StopDemoAsync()
-    {
-        await StopDemoInternalAsync();
-        SetState(BleConnectionState.Disconnected);
-        RaiseStatus("已退出演示模式");
-    }
-
-    private Task StopDemoInternalAsync()
-    {
-        if (_demoTimer != null)
-        {
-            _demoTimer.Dispose();
-            _demoTimer = null;
-        }
-
-        return Task.CompletedTask;
     }
 
     // ==================== 数据回调 ====================
@@ -639,8 +590,6 @@ public sealed class BleHeartRateService : IDisposable
     public void Dispose()
     {
         CancelReconnect();
-        _demoTimer?.Dispose();
-        _demoTimer = null;
         CleanupDevice();
         _watcher?.Stop();
         _watcher = null;

@@ -70,9 +70,8 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button x:Name="DemoButton" Content="开启演示模式" Height="30" Click="OnDemoClicked" />
             <Button Grid.Column="1" Content="断开连接" Width="100" Height="30" Margin="8,0,0,0"
-                    Click="OnDisconnectClicked" />
+                    HorizontalAlignment="Right" Click="OnDisconnectClicked" />
         </Grid>
 
         <TextBlock x:Name="StatusText" Grid.Row="5" Text="就绪，点击“扫描设备”开始" FontSize="12"

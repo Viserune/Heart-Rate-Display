@@ -43,7 +43,6 @@ public partial class MainWindow : Window
         // 托盘事件
         _tray.ShowMainRequested += ShowMainPublic;
         _tray.ToggleHudRequested += ToggleHudFromTrayPublic;
-        _tray.ToggleDemoRequested += ToggleDemoFromTrayPublic;
         _tray.ToggleLockRequested += ToggleLockFromTrayPublic;
         _tray.ExitRequested += () => Application.Current.Shutdown();
 
@@ -81,23 +80,6 @@ public partial class MainWindow : Window
         HudToggle.IsChecked = _settings.Current.HudVisible;
         _suppressToggleEvents = false;
         ApplyHudVisibility();
-    }
-
-    public void ToggleDemoFromTrayPublic()
-    {
-        _ = ToggleDemoAsync();
-    }
-
-    /// <summary>命令行 --demo：直接开启演示模式（幂等）。</summary>
-    public void StartDemoPublic()
-    {
-        if (_ble.IsDemoMode)
-        {
-            return;
-        }
-
-        _ble.StartDemo();
-        _tray.DemoRunning = true;
     }
 
     public void ToggleLockFromTrayPublic()
@@ -220,7 +202,7 @@ public partial class MainWindow : Window
             BleConnectionState.Scanning => "正在扫描…",
             BleConnectionState.Connecting => "正在连接…",
             BleConnectionState.Connected => _ble.ConnectedDeviceName ?? "已连接",
-            _ => _ble.IsDemoMode ? "演示模式" : "未连接设备",
+            _ => "未连接设备",
         };
     }
 
@@ -258,30 +240,6 @@ public partial class MainWindow : Window
 
         HeartRateDisplay.Text = bpm.ToString();
         HeartRateDisplay.Foreground = new SolidColorBrush(HrColors.GetColor(bpm));
-    }
-
-    // ==================== 演示模式 ====================
-
-    private async void OnDemoClicked(object sender, RoutedEventArgs e)
-    {
-        await ToggleDemoAsync();
-    }
-
-    private async Task ToggleDemoAsync()
-    {
-        if (_ble.IsDemoMode)
-        {
-            await _ble.StopDemoAsync();
-            _tray.DemoRunning = false;
-            SetHeartRateDisplay(-1);
-            SetStatus("已退出演示模式");
-        }
-        else
-        {
-            _ble.StartDemo();
-            _tray.DemoRunning = true;
-            _tray.ShowBalloon("HeartRater", "演示模式已开启（模拟心率数据）");
-        }
     }
 
     // ==================== 悬浮窗 ====================

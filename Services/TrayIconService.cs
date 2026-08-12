@@ -41,9 +41,8 @@ public sealed class TrayIconService : IDisposable
 
     private const uint MENU_SHOW_MAIN = 1;
     private const uint MENU_TOGGLE_HUD = 2;
-    private const uint MENU_TOGGLE_DEMO = 3;
-    private const uint MENU_TOGGLE_LOCK = 4;
-    private const uint MENU_EXIT = 5;
+    private const uint MENU_TOGGLE_LOCK = 3;
+    private const uint MENU_EXIT = 4;
 
     private static readonly string ClassName = "HeartRaterTrayWindow_" + Guid.NewGuid().ToString("N");
 
@@ -57,7 +56,6 @@ public sealed class TrayIconService : IDisposable
     private uint _threadId;
     private IntPtr _hwnd;
     private IntPtr _hIcon;
-    private volatile bool _demoRunning;
     private volatile bool _locked;
     private bool _disposed;
 
@@ -72,16 +70,8 @@ public sealed class TrayIconService : IDisposable
     public event Action? LeftClick;
     public event Action? ShowMainRequested;
     public event Action? ToggleHudRequested;
-    public event Action? ToggleDemoRequested;
     public event Action? ToggleLockRequested;
     public event Action? ExitRequested;
-
-    /// <summary>演示模式是否开启（影响托盘菜单文案）。UI 线程写入，托盘线程读取。</summary>
-    public bool DemoRunning
-    {
-        get => _demoRunning;
-        set => _demoRunning = value;
-    }
 
     /// <summary>悬浮窗是否锁定（影响托盘菜单文案）。UI 线程写入，托盘线程读取。</summary>
     public bool Locked
@@ -285,7 +275,6 @@ public sealed class TrayIconService : IDisposable
         IntPtr menu = CreatePopupMenu();
         AppendMenuW(menu, MF_STRING, MENU_SHOW_MAIN, "显示主界面");
         AppendMenuW(menu, MF_STRING, MENU_TOGGLE_HUD, "显示/隐藏悬浮窗");
-        AppendMenuW(menu, MF_STRING, MENU_TOGGLE_DEMO, _demoRunning ? "退出演示模式" : "开启演示模式");
         AppendMenuW(menu, MF_STRING, MENU_TOGGLE_LOCK, _locked ? "解锁悬浮窗" : "锁定悬浮窗");
         AppendMenuW(menu, MF_SEPARATOR, 0, null);
         AppendMenuW(menu, MF_STRING, MENU_EXIT, "退出");
@@ -302,9 +291,6 @@ public sealed class TrayIconService : IDisposable
                 break;
             case MENU_TOGGLE_HUD:
                 Raise(ToggleHudRequested);
-                break;
-            case MENU_TOGGLE_DEMO:
-                Raise(ToggleDemoRequested);
                 break;
             case MENU_TOGGLE_LOCK:
                 Raise(ToggleLockRequested);

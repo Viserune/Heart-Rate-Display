@@ -1,8 +1,9 @@
 ﻿# HeartRater (WPF) 后台冒烟测试
 # 全程不显示/不激活主窗口，不抢占前台（全屏游戏不受影响）：
-#   - --minimized --demo 启动：进程/悬浮窗/托盘/心率管线（UIA 读悬浮窗 BpmText）
+#   - --minimized 启动：进程/悬浮窗/托盘/样式检查
 #   - 验证前台进程在测试前后不变（不最小化全屏应用）
-# 主窗口 UI 交互类功能（自启开关、演示按钮点击、关闭隐藏到托盘、恢复）在交互式验证中确认。
+#   - 心率管线：有真实设备连接时验证 HUD 数字，无设备则 SKIP（真机验证）
+# 主窗口 UI 交互类功能（自启开关、关闭隐藏到托盘、恢复）在交互式验证中确认。
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -68,9 +69,22 @@ function Check-Foreground {
     return ($pid2 -eq $fgPidBefore)
 }
 
-# ========== 场景 1: --minimized --demo 后台启动 ==========
-Write-Output "=== 场景 1: --minimized --demo（后台演示） ==="
-Start-Process -FilePath $exe -ArgumentList "--minimized --demo"
+# 读取悬浮窗心率数字（"--" 表示无设备）
+function Read-HudBpm {
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $hudCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "HeartRater 悬浮窗")
+    $hudWin = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $hudCond)
+    if ($hudWin) {
+        $bpmCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "BpmText")
+        $bpm = $hudWin.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $bpmCond)
+        if ($bpm) { return $bpm.Current.Name }
+    }
+    return ""
+}
+
+# ========== 场景 1: --minimized 后台启动 ==========
+Write-Output "=== 场景 1: --minimized（后台启动） ==="
+Start-Process -FilePath $exe -ArgumentList "--minimized"
 Start-Sleep -Seconds 8
 $p = Get-Process -Name HeartRater -ErrorAction SilentlyContinue
 T "进程存活" ($null -ne $p)
@@ -85,7 +99,6 @@ T "悬浮窗存在" ($null -ne $hud -and $hud.Visible)
 T "托盘消息窗口存在" ($null -ne $trayMsg)
 
 # 托盘图标：Win11 通知区域对 UIA 不可见（Subtree 全树 0 命中），标记 SKIP
-# 应用侧 Shell_NotifyIconW(NIM_ADD) 已由托盘消息窗口存在性间接验证；图标可见性需交互确认
 S "托盘图标存在（Win11 通知区域 UIA 不可达）"
 
 # 悬浮窗样式
@@ -95,16 +108,16 @@ if ($hud) {
     T "悬浮窗不激活(NOACTIVATE)" (($style -band 0x08000000) -ne 0)
 }
 
-# 演示模式心率（UIA 读悬浮窗 BpmText）
-$root = [System.Windows.Automation.AutomationElement]::RootElement
-$hudCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "HeartRater 悬浮窗")
-$hudWin = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $hudCond)
-if ($hudWin) {
-    $bpmCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "BpmText")
-    $bpm = $hudWin.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $bpmCond)
-    $val = if ($bpm) { $bpm.Current.Name } else { "" }
-    T "演示模式心率输出（值=$val）" ($val -match '^\d+$')
-} else { T "演示模式心率输出" $false }
+# 心率管线：有真实设备（自动连接成功）→ 验证；无设备 → SKIP
+Start-Sleep -Seconds 10
+$bpm = Read-HudBpm
+if ($bpm -match '^\d+$') {
+    T "心率显示（值=$bpm）" $true
+} elseif ($bpm -eq "--") {
+    S "心率管线（无设备连接，需真机验证）"
+} else {
+    T "心率显示（值=$bpm）" $false
+}
 
 # 前台未被抢占
 T "前台未被抢占（全屏应用不最小化）" (Check-Foreground)
@@ -112,8 +125,8 @@ T "前台未被抢占（全屏应用不最小化）" (Check-Foreground)
 Stop-Process -Name HeartRater -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
-# ========== 场景 2: --minimized 后台启动 ==========
-Write-Output "=== 场景 2: --minimized（无演示） ==="
+# ========== 场景 2: --minimized 启动（重复，稳定性） ==========
+Write-Output "=== 场景 2: --minimized（稳定性复测） ==="
 Start-Process -FilePath $exe -ArgumentList "--minimized"
 Start-Sleep -Seconds 8
 $p2 = Get-Process -Name HeartRater -ErrorAction SilentlyContinue
@@ -131,7 +144,6 @@ Stop-Process -Name HeartRater -Force -ErrorAction SilentlyContinue
 # ========== 主窗口 UI 交互（后台不可行，标注） ==========
 Write-Output "=== 主窗口 UI 交互（SKIP） ==="
 S "自启开关切换 + 注册表写入"
-S "演示模式按钮点击（主窗口内）"
 S "关闭主窗口隐藏到托盘"
 S "主窗口从托盘恢复"
 
