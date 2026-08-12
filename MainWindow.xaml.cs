@@ -131,15 +131,27 @@ public partial class MainWindow : Window
         try
         {
             var results = await _ble.ScanAsync(TimeSpan.FromSeconds(6));
+
+            // 只保留带心率广播（0x180D）的设备；上次连接过的设备也保留，
+            // 防止广播未声明心率服务的设备在自动回连后从列表消失
+            var lastDeviceId = _settings.Current.LastDeviceId;
+            var heartDevices = results
+                .Where(d => d.HasHeartRateService || (lastDeviceId != null && d.Key == lastDeviceId))
+                .OrderBy(x => x.Name)
+                .ToList();
+
             _devices.Clear();
-            foreach (var d in results.OrderByDescending(x => x.HasHeartRateService).ThenBy(x => x.Name))
+            foreach (var d in heartDevices)
             {
                 _devices.Add(d);
             }
 
+            var filteredCount = results.Count - heartDevices.Count;
             SetStatus(_devices.Count == 0
-                ? "未发现设备，请确认设备已开机且蓝牙已开启"
-                : $"扫描完成，发现 {_devices.Count} 个设备");
+                ? "未发现心率设备，请确认设备已开机且支持心率广播"
+                : filteredCount > 0
+                    ? $"发现 {_devices.Count} 个心率设备（已过滤 {filteredCount} 个非心率设备）"
+                    : $"扫描完成，发现 {_devices.Count} 个心率设备");
         }
         finally
         {
