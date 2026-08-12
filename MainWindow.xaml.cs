@@ -55,10 +55,9 @@ public partial class MainWindow : Window
         SourceInitialized += (_, _) =>
         {
             var s = _settings.Current;
-            if (s.MainWidth >= 360 && s.MainHeight >= 480)
+            if (s.MainWidth >= 360)
             {
                 Width = s.MainWidth;
-                Height = s.MainHeight;
             }
 
             WindowChrome.ApplyMica(this);
@@ -192,7 +191,6 @@ public partial class MainWindow : Window
         AutoStartToggle.IsChecked = s.AutoStartEnabled;
         AutoReconnectToggle.IsChecked = s.AutoReconnect;
         HudToggle.IsChecked = s.HudVisible;
-        ClickThroughToggle.IsChecked = s.HudClickThrough;
         LockedToggle.IsChecked = s.HudLocked;
         _tray.Locked = s.HudLocked;
         _suppressToggleEvents = false;
@@ -495,18 +493,6 @@ public partial class MainWindow : Window
         ApplyHudVisibility();
     }
 
-    private void OnClickThroughToggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressToggleEvents)
-        {
-            return;
-        }
-
-        _settings.Current.HudClickThrough = ClickThroughToggle.IsChecked == true;
-        _settings.Save();
-        _hud.ClickThrough = ClickThroughToggle.IsChecked == true;
-    }
-
     private void OnLockedToggled(object sender, RoutedEventArgs e)
     {
         if (_suppressToggleEvents)
@@ -539,7 +525,6 @@ public partial class MainWindow : Window
         // 关闭主窗口 → 隐藏到托盘（不退出）
         e.Cancel = true;
         _settings.Current.MainWidth = ActualWidth;
-        _settings.Current.MainHeight = ActualHeight;
         _settings.Save();
         Hide();
         _tray.ShowBalloon("HeartRater", "已最小化到系统托盘，双击图标可重新打开");

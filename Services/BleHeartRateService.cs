@@ -63,6 +63,7 @@ public sealed class BleHeartRateService : IDisposable
     private GattCharacteristic? _characteristic;
 
     private CancellationTokenSource? _reconnectCts;
+    private CancellationTokenSource? _autoCts;
     private volatile bool _userRequestedDisconnect;
 
     private BleConnectionState _state = BleConnectionState.Disconnected;
@@ -203,24 +204,29 @@ public sealed class BleHeartRateService : IDisposable
 
     // ==================== 连接 ====================
 
-    /// <summary>连接设备（用户主动触发）。会先取消之前的自动重连。</summary>
+    /// <summary>连接设备（用户主动触发）。会先取消之前的自动重连与自动轮询。</summary>
     public async Task<bool> ConnectAsync(string deviceKey, string? deviceName, bool autoReconnect)
     {
         _userRequestedDisconnect = false;
         CancelReconnect();
+        CancelAutoPoll();
 
         return await ConnectInternalAsync(deviceKey, deviceName, autoReconnect, quiet: false);
     }
 
     /// <summary>
-    /// 启动自动连接：先尝试直接打开上次设备；若设备未就绪，则先扫描检测
-    /// （按 MAC 优先、名称其次匹配上次设备），检测到再连接。避免盲目用失效的
-    /// DeviceInformation.Id 连接导致失败。
+    /// 启动自动连接：先尝试直接打开上次设备；若设备未就绪，则进入低频率轮询
+    /// （每 30 秒扫描一次，按 MAC 优先、名称其次匹配上次设备），直到检测到
+    /// 设备或用户主动操作（手动连接/断开）取消。心率广播常需用户手动开启，
+    /// 因此持续后台轮询等待设备上线。
     /// </summary>
     public async Task<bool> AutoConnectLastAsync(string lastKey, string? lastName, bool autoReconnect)
     {
         _userRequestedDisconnect = false;
         CancelReconnect();
+        CancelAutoPoll();
+        _autoCts = new CancellationTokenSource();
+        var ct = _autoCts.Token;
 
         // 1) 快速路径：上次设备可直接打开 → 直接连接
         if (await ProbeDeviceAsync(lastKey))
@@ -232,32 +238,60 @@ public sealed class BleHeartRateService : IDisposable
             }
         }
 
-        // 2) 检测路径：设备未就绪（Id 失效 / 未开机等），扫描并匹配上次设备
-        RaiseStatus("上次设备未就绪，正在扫描检测…");
-        IReadOnlyList<BleDeviceInfo> list;
-        try
-        {
-            list = await ScanAsync(TimeSpan.FromSeconds(6));
-        }
-        catch
-        {
-            list = Array.Empty<BleDeviceInfo>();
-        }
-
+        // 2) 低频率轮询：设备广播未开启时持续扫描等待
         var mac = ExtractMacFromId(lastKey);
-        var match = list.FirstOrDefault(d => !string.IsNullOrEmpty(mac) &&
-                       string.Equals(d.Address, mac, StringComparison.OrdinalIgnoreCase))
-                 ?? list.FirstOrDefault(d => !string.IsNullOrEmpty(lastName) &&
-                       d.Name.Contains(lastName, StringComparison.OrdinalIgnoreCase));
-
-        if (match == null)
+        var attempt = 0;
+        while (!ct.IsCancellationRequested)
         {
-            RaiseStatus("未检测到上次连接的设备，请确认设备已开机后手动连接");
-            return false;
+            attempt++;
+            RaiseStatus(attempt == 1
+                ? "上次设备未就绪，正在扫描检测…"
+                : $"正在后台轮询检测上次设备（第 {attempt} 次）…");
+
+            IReadOnlyList<BleDeviceInfo> list;
+            try
+            {
+                list = await ScanAsync(TimeSpan.FromSeconds(6));
+            }
+            catch
+            {
+                list = Array.Empty<BleDeviceInfo>();
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            var match = list.FirstOrDefault(d => !string.IsNullOrEmpty(mac) &&
+                           string.Equals(d.Address, mac, StringComparison.OrdinalIgnoreCase))
+                     ?? list.FirstOrDefault(d => !string.IsNullOrEmpty(lastName) &&
+                           d.Name.Contains(lastName, StringComparison.OrdinalIgnoreCase));
+
+            if (match != null)
+            {
+                RaiseStatus($"检测到 {match.DisplayName}，正在连接…");
+                return await ConnectInternalAsync(match.Key, match.Name, autoReconnect, quiet: true);
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            // 低频率：30 秒后重试（心率广播通常由用户手动开启）
+            RaiseStatus("未检测到设备，30 秒后自动重试（可在主界面手动连接）");
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
         }
 
-        RaiseStatus($"检测到 {match.DisplayName}，正在连接…");
-        return await ConnectInternalAsync(match.Key, match.Name, autoReconnect, quiet: true);
+        return false;
     }
 
     /// <summary>轻量探测：设备能否被系统打开（不建立 GATT 连接）。</summary>
@@ -523,15 +557,23 @@ public sealed class BleHeartRateService : IDisposable
         }
     }
 
-    /// <summary>用户主动断开。</summary>
+    /// <summary>用户主动断开（同时停止自动轮询）。</summary>
     public async Task DisconnectAsync()
     {
         _userRequestedDisconnect = true;
         _reconnectAutoEnabled = false;
         CancelReconnect();
+        CancelAutoPoll();
         CleanupDevice();
         SetState(BleConnectionState.Disconnected);
         RaiseStatus("已断开连接");
+    }
+
+    private void CancelAutoPoll()
+    {
+        _autoCts?.Cancel();
+        _autoCts?.Dispose();
+        _autoCts = null;
     }
 
     private void CancelReconnect()
@@ -590,6 +632,7 @@ public sealed class BleHeartRateService : IDisposable
     public void Dispose()
     {
         CancelReconnect();
+        CancelAutoPoll();
         CleanupDevice();
         _watcher?.Stop();
         _watcher = null;

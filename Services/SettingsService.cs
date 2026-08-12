@@ -26,10 +26,7 @@ public sealed class AppSettings
     /// <summary>悬浮窗可见。</summary>
     public bool HudVisible { get; set; } = true;
 
-    /// <summary>悬浮窗点击穿透。</summary>
-    public bool HudClickThrough { get; set; }
-
-    /// <summary>悬浮窗锁定：禁拖动 + 强制点击穿透（全屏游戏/视频时不会误拖动）。</summary>
+    /// <summary>悬浮窗锁定：禁拖动 + 自动点击穿透（全屏下可点击后面）。</summary>
     public bool HudLocked { get; set; }
 
     /// <summary>悬浮窗 X（屏幕坐标，-1 表示默认右上角）。</summary>
@@ -38,11 +35,8 @@ public sealed class AppSettings
     /// <summary>悬浮窗 Y。</summary>
     public double HudY { get; set; } = -1;
 
-    /// <summary>主窗口上次宽度。</summary>
+    /// <summary>主窗口上次宽度（高度由内容自适应，不记忆）。</summary>
     public double MainWidth { get; set; } = 430;
-
-    /// <summary>主窗口上次高度。</summary>
-    public double MainHeight { get; set; } = 620;
 }
 
 public sealed class SettingsService

@@ -30,7 +30,6 @@ public partial class HudWindow : Window
 
     private readonly SettingsService _settings;
     private IntPtr _hwnd;
-    private bool _clickThrough;
     private bool _locked;
     private bool _dragging;
     private System.Windows.Point _dragStartScreen;
@@ -40,7 +39,6 @@ public partial class HudWindow : Window
     public HudWindow(SettingsService settings)
     {
         _settings = settings;
-        _clickThrough = settings.Current.HudClickThrough;
         _locked = settings.Current.HudLocked;
         InitializeComponent();
 
@@ -61,7 +59,7 @@ public partial class HudWindow : Window
     }
 
     /// <summary>
-    /// 是否锁定悬浮窗：锁定后禁拖动，并强制点击穿透（全屏游戏/视频时不会误拖动、可点击到后面）。
+    /// 是否锁定悬浮窗：锁定后禁拖动，并自动点击穿透（全屏游戏/视频时不会误拖动、可点击到后面）。
     /// </summary>
     public bool Locked
     {
@@ -74,22 +72,6 @@ public partial class HudWindow : Window
             }
 
             _locked = value;
-            ApplyWindowStyles();
-        }
-    }
-
-    /// <summary>是否点击穿透（鼠标事件直接穿透到下层窗口）。</summary>
-    public bool ClickThrough
-    {
-        get => _clickThrough;
-        set
-        {
-            if (_clickThrough == value)
-            {
-                return;
-            }
-
-            _clickThrough = value;
             ApplyWindowStyles();
         }
     }
@@ -161,8 +143,8 @@ public partial class HudWindow : Window
 
         long style = GetWindowLongPtrW(_hwnd, GWL_EXSTYLE);
         style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-        // 锁定时强制点击穿透（可点击到悬浮窗后面的窗口/全屏应用）
-        if (_locked || _clickThrough)
+        // 锁定时自动点击穿透（可点击到悬浮窗后面的窗口/全屏应用）
+        if (_locked)
         {
             style |= WS_EX_TRANSPARENT;
         }
@@ -179,8 +161,8 @@ public partial class HudWindow : Window
 
     private void OnPointerPressed(object sender, MouseButtonEventArgs e)
     {
-        // 锁定或点击穿透时禁拖动
-        if (_locked || _clickThrough)
+        // 锁定时禁拖动（同时已穿透）
+        if (_locked)
         {
             return;
         }
