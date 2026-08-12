@@ -22,7 +22,12 @@
     <Border x:Name="CardBorder" Background="Transparent" Padding="20,10">
         <StackPanel VerticalAlignment="Center">
             <TextBlock x:Name="BpmText" Text="--" FontSize="48" FontWeight="Bold"
-                       Foreground="#C0FFFFFF" HorizontalAlignment="Center" />
+                       Foreground="#C0FFFFFF" HorizontalAlignment="Center"
+                       FontFamily="Segoe UI Variable Display, Segoe UI">
+                <TextBlock.Effect>
+                    <DropShadowEffect Color="#000000" BlurRadius="6" ShadowDepth="1" Opacity="0.45" />
+                </TextBlock.Effect>
+            </TextBlock>
             <TextBlock Text="BPM" FontSize="10" Foreground="#80FFFFFF" HorizontalAlignment="Center" />
         </StackPanel>
     </Border>

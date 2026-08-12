@@ -56,8 +56,50 @@ public partial class MainWindow : Window
                 Width = s.MainWidth;
                 Height = s.MainHeight;
             }
+
+            ApplyMicaBackdrop();
         };
     }
+
+    /// <summary>
+    /// Windows 11 22621+ 启用 Mica 背景 + 系统圆角；其余系统用主题渐变兜底。
+    /// Mica 自动跟随系统深浅色。
+    /// </summary>
+    private void ApplyMicaBackdrop()
+    {
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            // Win11 22621+
+            if (Environment.OSVersion.Version.Build >= 22621)
+            {
+                // DWMWA_SYSTEMBACKDROP_TYPE = 38，Mica = 2；窗口背景置透明让 Mica 透出
+                var backdropType = 2;
+                DwmSetWindowAttribute(hwnd, 38, ref backdropType, sizeof(int));
+                // DWMWA_WINDOW_CORNER_PREFERENCE = 33，圆角 = 2
+                var cornerPref = 2;
+                DwmSetWindowAttribute(hwnd, 33, ref cornerPref, sizeof(int));
+                Background = Brushes.Transparent;
+            }
+            else
+            {
+                // 非 Win11：主题渐变兜底
+                Background = (Brush)FindResource("WindowFallbackBrush");
+            }
+        }
+        catch
+        {
+            // DWM 调用失败（如旧系统）→ 保留 XAML 主题背景
+        }
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     // ==================== 公开入口（托盘 / App 调用） ====================
 

@@ -22,6 +22,9 @@ public partial class App : Application
         // 关闭主窗口不退出（驻留托盘），仅托盘“退出”真正退出
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+        // 跟随系统深浅色主题（须在创建窗口前完成，控件首次绑定即取正确色）
+        ThemeService.Initialize(Resources);
+
         _settings = new SettingsService();
         Action<Action> dispatch = a => Dispatcher.BeginInvoke(a);
         _ble = new BleHeartRateService(dispatch);

@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="HeartRater 心率助手"
-        Width="430" Height="660"
-        MinWidth="360" MinHeight="500"
+        Width="430" Height="680"
+        MinWidth="360" MinHeight="520"
         WindowStartupLocation="CenterScreen"
-        Background="#F5F5F5"
+        Background="{DynamicResource WindowBackgroundBrush}"
         Closing="OnWindowClosing">
 
     <Grid Margin="18">
@@ -20,61 +20,67 @@
         </Grid.RowDefinitions>
 
         <!-- 顶部：实时心率 -->
-        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,6,0,14">
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,8,0,16">
+            <TextBlock Text="实时心率" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center" />
             <TextBlock x:Name="HeartRateDisplay" Text="--" FontSize="68" FontWeight="Bold"
-                       Foreground="#999999" HorizontalAlignment="Center" />
-            <TextBlock Text="BPM" FontSize="12" Foreground="#777777" HorizontalAlignment="Center" Margin="0,-6,0,0" />
-            <TextBlock x:Name="DeviceNameText" Text="未连接设备" FontSize="13" Foreground="#888888"
+                       Foreground="{DynamicResource HrPlaceholderBrush}" HorizontalAlignment="Center" />
+            <TextBlock Text="BPM" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center" Margin="0,-6,0,0" />
+            <TextBlock x:Name="DeviceNameText" Text="未连接设备" FontSize="13"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
                        HorizontalAlignment="Center" Margin="0,8,0,0" />
         </StackPanel>
 
-        <!-- 设备区域 -->
-        <Grid Grid.Row="1" Margin="0,0,0,8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBox x:Name="DeviceFilterBox" VerticalContentAlignment="Center" Padding="6,5"
-                     ToolTip="按名称筛选" TextChanged="OnDeviceFilterChanged" />
-            <Button x:Name="ScanButton" Grid.Column="1" Content="扫描设备" Width="90" Margin="8,0,0,0"
-                    Click="OnScanClicked" />
-        </Grid>
+        <!-- 设备卡片 -->
+        <Border Grid.Row="1" Style="{DynamicResource CardBorderStyle}" Margin="0,0,0,10">
+            <StackPanel>
+                <TextBlock Text="设备" Style="{DynamicResource CardTitleStyle}" />
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="DeviceFilterBox" VerticalContentAlignment="Center"
+                             Padding="8,6" ToolTip="按名称筛选"
+                             TextChanged="OnDeviceFilterChanged" />
+                    <Button x:Name="ScanButton" Grid.Column="1" Content="扫描设备" Width="92" Margin="8,0,0,0"
+                            Click="OnScanClicked" />
+                </Grid>
+                <ListBox x:Name="DeviceList" Height="180"
+                         DisplayMemberPath="DisplayName"
+                         SelectionChanged="OnDeviceSelectionChanged" />
+            </StackPanel>
+        </Border>
 
-        <ListBox x:Name="DeviceList" Grid.Row="2" Height="200" Margin="0,0,0,10"
-                 DisplayMemberPath="DisplayName" SelectionChanged="OnDeviceSelectionChanged" />
-
-        <Button x:Name="ConnectButton" Grid.Row="3" Content="连接" Height="34" Margin="0,0,0,12"
+        <Button x:Name="ConnectButton" Grid.Row="2" Content="连接" Height="36" Margin="0,0,0,12"
+                Style="{DynamicResource AccentButtonStyle}" FontWeight="SemiBold"
                 IsEnabled="False" Click="OnConnectClicked" />
 
-        <!-- 设置区域 -->
-        <GroupBox Grid.Row="4" Header="设置" Padding="10" Margin="0,0,0,10">
+        <!-- 设置卡片 -->
+        <Border Grid.Row="3" Style="{DynamicResource CardBorderStyle}" Margin="0,0,0,10">
             <StackPanel>
-                <CheckBox x:Name="AutoConnectToggle" Content="启动时自动连接上次设备" Margin="0,4"
-                          Checked="OnAutoConnectToggled" Unchecked="OnAutoConnectToggled" />
-                <CheckBox x:Name="AutoStartToggle" Content="开机自动启动" Margin="0,4"
-                          Checked="OnAutoStartToggled" Unchecked="OnAutoStartToggled" />
-                <CheckBox x:Name="AutoReconnectToggle" Content="断线自动重连" Margin="0,4"
-                          Checked="OnAutoReconnectToggled" Unchecked="OnAutoReconnectToggled" />
-                <CheckBox x:Name="HudToggle" Content="显示桌面悬浮窗" Margin="0,4"
-                          Checked="OnHudToggled" Unchecked="OnHudToggled" />
-                <CheckBox x:Name="ClickThroughToggle" Content="悬浮窗点击穿透" Margin="0,4"
-                          Checked="OnClickThroughToggled" Unchecked="OnClickThroughToggled" />
-                <CheckBox x:Name="LockedToggle" Content="锁定悬浮窗" Margin="0,4"
-                          Checked="OnLockedToggled" Unchecked="OnLockedToggled" />
+                <TextBlock Text="设置" Style="{DynamicResource CardTitleStyle}" />
+                <ToggleButton x:Name="AutoConnectToggle" Content="启动时自动连接上次设备" Margin="0,4"
+                              Checked="OnAutoConnectToggled" Unchecked="OnAutoConnectToggled" />
+                <ToggleButton x:Name="AutoStartToggle" Content="开机自动启动" Margin="0,4"
+                              Checked="OnAutoStartToggled" Unchecked="OnAutoStartToggled" />
+                <ToggleButton x:Name="AutoReconnectToggle" Content="断线自动重连" Margin="0,4"
+                              Checked="OnAutoReconnectToggled" Unchecked="OnAutoReconnectToggled" />
+                <ToggleButton x:Name="HudToggle" Content="显示桌面悬浮窗" Margin="0,4"
+                              Checked="OnHudToggled" Unchecked="OnHudToggled" />
+                <ToggleButton x:Name="ClickThroughToggle" Content="悬浮窗点击穿透" Margin="0,4"
+                              Checked="OnClickThroughToggled" Unchecked="OnClickThroughToggled" />
+                <ToggleButton x:Name="LockedToggle" Content="锁定悬浮窗" Margin="0,4"
+                              Checked="OnLockedToggled" Unchecked="OnLockedToggled" />
             </StackPanel>
-        </GroupBox>
+        </Border>
 
-        <!-- 操作按钮 + 状态 -->
-        <Grid Grid.Row="6" Margin="0,4,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Button Grid.Column="1" Content="断开连接" Width="100" Height="30" Margin="8,0,0,0"
-                    HorizontalAlignment="Right" Click="OnDisconnectClicked" />
-        </Grid>
+        <Button Grid.Row="4" Content="断开连接" Height="34" Margin="0,0,0,8"
+                HorizontalAlignment="Stretch" Click="OnDisconnectClicked" />
 
         <TextBlock x:Name="StatusText" Grid.Row="5" Text="就绪，点击“扫描设备”开始" FontSize="12"
-                   Foreground="#888888" TextWrapping="Wrap" VerticalAlignment="Bottom" Margin="0,6,0,0" />
+                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                   VerticalAlignment="Bottom" Margin="0,6,0,0" />
     </Grid>
 </Window>
