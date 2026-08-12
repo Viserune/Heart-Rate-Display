@@ -88,6 +88,18 @@ public partial class MainWindow : Window
         _ = ToggleDemoAsync();
     }
 
+    /// <summary>命令行 --demo：直接开启演示模式（幂等）。</summary>
+    public void StartDemoPublic()
+    {
+        if (_ble.IsDemoMode)
+        {
+            return;
+        }
+
+        _ble.StartDemo();
+        _tray.DemoRunning = true;
+    }
+
     public void ToggleLockFromTrayPublic()
     {
         _settings.Current.HudLocked = !_settings.Current.HudLocked;

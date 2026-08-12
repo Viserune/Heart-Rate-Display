@@ -39,12 +39,20 @@ public partial class App : Application
 
         // 启动流程
         var minimized = e.Args.Contains("--minimized");
+        var demo = e.Args.Contains("--demo");
         if (!minimized)
         {
             _main.Show();
         }
 
         _hud.ApplyHudFromSettings();
+
+        // 演示模式优先于自动连接（命令行进演示，通常用于展示/测试，不抢焦点）
+        if (demo)
+        {
+            _main.StartDemoPublic();
+            return;
+        }
 
         if (_settings.Current.AutoConnectOnStart && !string.IsNullOrEmpty(_settings.Current.LastDeviceId))
         {
