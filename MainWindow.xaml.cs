@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,7 +19,7 @@ public partial class MainWindow : Window
     private readonly TrayIconService _tray;
 
     private readonly ObservableCollection<BleDeviceInfo> _devices = new();
-    private bool _suppressToggleEvents;
+    private SettingsWindow? _settingsWindow;
 
     public MainWindow(SettingsService settings, BleHeartRateService ble, HudWindow hud, TrayIconService tray)
     {
@@ -46,7 +45,8 @@ public partial class MainWindow : Window
         _tray.ToggleLockRequested += ToggleLockFromTrayPublic;
         _tray.ExitRequested += () => Application.Current.Shutdown();
 
-        LoadSettingsIntoUi();
+        // 托盘菜单锁定状态与当前设置同步
+        _tray.Locked = _settings.Current.HudLocked;
 
         SourceInitialized += (_, _) =>
         {
@@ -57,49 +57,9 @@ public partial class MainWindow : Window
                 Height = s.MainHeight;
             }
 
-            ApplyMicaBackdrop();
+            WindowChrome.ApplyMica(this);
         };
     }
-
-    /// <summary>
-    /// Windows 11 22621+ 启用 Mica 背景 + 系统圆角；其余系统用主题渐变兜底。
-    /// Mica 自动跟随系统深浅色。
-    /// </summary>
-    private void ApplyMicaBackdrop()
-    {
-        try
-        {
-            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-            if (hwnd == IntPtr.Zero)
-            {
-                return;
-            }
-
-            // Win11 22621+
-            if (Environment.OSVersion.Version.Build >= 22621)
-            {
-                // DWMWA_SYSTEMBACKDROP_TYPE = 38，Mica = 2；窗口背景置透明让 Mica 透出
-                var backdropType = 2;
-                DwmSetWindowAttribute(hwnd, 38, ref backdropType, sizeof(int));
-                // DWMWA_WINDOW_CORNER_PREFERENCE = 33，圆角 = 2
-                var cornerPref = 2;
-                DwmSetWindowAttribute(hwnd, 33, ref cornerPref, sizeof(int));
-                Background = Brushes.Transparent;
-            }
-            else
-            {
-                // 非 Win11：主题渐变兜底
-                Background = (Brush)FindResource("WindowFallbackBrush");
-            }
-        }
-        catch
-        {
-            // DWM 调用失败（如旧系统）→ 保留 XAML 主题背景
-        }
-    }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     // ==================== 公开入口（托盘 / App 调用） ====================
 
@@ -118,9 +78,6 @@ public partial class MainWindow : Window
     {
         _settings.Current.HudVisible = !_settings.Current.HudVisible;
         _settings.Save();
-        _suppressToggleEvents = true;
-        HudToggle.IsChecked = _settings.Current.HudVisible;
-        _suppressToggleEvents = false;
         ApplyHudVisibility();
     }
 
@@ -128,9 +85,6 @@ public partial class MainWindow : Window
     {
         _settings.Current.HudLocked = !_settings.Current.HudLocked;
         _settings.Save();
-        _suppressToggleEvents = true;
-        LockedToggle.IsChecked = _settings.Current.HudLocked;
-        _suppressToggleEvents = false;
         _hud.Locked = _settings.Current.HudLocked;
         _tray.Locked = _settings.Current.HudLocked;
         SetStatus(_settings.Current.HudLocked ? "已锁定悬浮窗" : "已解锁悬浮窗");
@@ -141,20 +95,13 @@ public partial class MainWindow : Window
         StatusText.Text = message;
     }
 
-    // ==================== 设置加载 ====================
+    // ==================== 设置窗口 ====================
 
-    private void LoadSettingsIntoUi()
+    private void OnSettingsClicked(object sender, RoutedEventArgs e)
     {
-        var s = _settings.Current;
-        _suppressToggleEvents = true;
-        AutoConnectToggle.IsChecked = s.AutoConnectOnStart;
-        AutoStartToggle.IsChecked = s.AutoStartEnabled;
-        AutoReconnectToggle.IsChecked = s.AutoReconnect;
-        HudToggle.IsChecked = s.HudVisible;
-        ClickThroughToggle.IsChecked = s.HudClickThrough;
-        LockedToggle.IsChecked = s.HudLocked;
-        _tray.Locked = s.HudLocked;
-        _suppressToggleEvents = false;
+        _settingsWindow ??= new SettingsWindow(_settings, _hud, _tray);
+        _settingsWindow.Owner = this;
+        _settingsWindow.ShowFromMain();
     }
 
     // ==================== 蓝牙 UI ====================
@@ -286,43 +233,6 @@ public partial class MainWindow : Window
 
     // ==================== 悬浮窗 ====================
 
-    private void OnHudToggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressToggleEvents)
-        {
-            return;
-        }
-
-        _settings.Current.HudVisible = HudToggle.IsChecked == true;
-        _settings.Save();
-        ApplyHudVisibility();
-    }
-
-    private void OnClickThroughToggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressToggleEvents)
-        {
-            return;
-        }
-
-        _settings.Current.HudClickThrough = ClickThroughToggle.IsChecked == true;
-        _settings.Save();
-        _hud.ClickThrough = ClickThroughToggle.IsChecked == true;
-    }
-
-    private void OnLockedToggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressToggleEvents)
-        {
-            return;
-        }
-
-        _settings.Current.HudLocked = LockedToggle.IsChecked == true;
-        _settings.Save();
-        _hud.Locked = LockedToggle.IsChecked == true;
-        _tray.Locked = LockedToggle.IsChecked == true;
-    }
-
     private void ApplyHudVisibility()
     {
         if (_settings.Current.HudVisible)
@@ -333,44 +243,6 @@ public partial class MainWindow : Window
         {
             _hud.HideHud();
         }
-    }
-
-    // ==================== 设置 ====================
-
-    private void OnAutoConnectToggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressToggleEvents)
-        {
-            return;
-        }
-
-        _settings.Current.AutoConnectOnStart = AutoConnectToggle.IsChecked == true;
-        _settings.Save();
-    }
-
-    private void OnAutoStartToggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressToggleEvents)
-        {
-            return;
-        }
-
-        var enabled = AutoStartToggle.IsChecked == true;
-        AutoStartService.SetEnabled(enabled);
-        _settings.Current.AutoStartEnabled = enabled;
-        _settings.Save();
-        SetStatus(enabled ? "已开启开机自启" : "已关闭开机自启");
-    }
-
-    private void OnAutoReconnectToggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressToggleEvents)
-        {
-            return;
-        }
-
-        _settings.Current.AutoReconnect = AutoReconnectToggle.IsChecked == true;
-        _settings.Save();
     }
 
     // ==================== 关闭行为 ====================
