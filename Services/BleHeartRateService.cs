@@ -215,6 +215,75 @@ public sealed class BleHeartRateService : IDisposable
         return await ConnectInternalAsync(deviceKey, deviceName, autoReconnect, quiet: false);
     }
 
+    /// <summary>
+    /// 启动自动连接：先尝试直接打开上次设备；若设备未就绪，则先扫描检测
+    /// （按 MAC 优先、名称其次匹配上次设备），检测到再连接。避免盲目用失效的
+    /// DeviceInformation.Id 连接导致失败。
+    /// </summary>
+    public async Task<bool> AutoConnectLastAsync(string lastKey, string? lastName, bool autoReconnect)
+    {
+        _userRequestedDisconnect = false;
+        CancelReconnect();
+        await StopDemoInternalAsync();
+
+        // 1) 快速路径：上次设备可直接打开 → 直接连接
+        if (await ProbeDeviceAsync(lastKey))
+        {
+            var ok = await ConnectInternalAsync(lastKey, lastName, autoReconnect, quiet: true);
+            if (ok)
+            {
+                return true;
+            }
+        }
+
+        // 2) 检测路径：设备未就绪（Id 失效 / 未开机等），扫描并匹配上次设备
+        RaiseStatus("上次设备未就绪，正在扫描检测…");
+        IReadOnlyList<BleDeviceInfo> list;
+        try
+        {
+            list = await ScanAsync(TimeSpan.FromSeconds(6));
+        }
+        catch
+        {
+            list = Array.Empty<BleDeviceInfo>();
+        }
+
+        var mac = ExtractMacFromId(lastKey);
+        var match = list.FirstOrDefault(d => !string.IsNullOrEmpty(mac) &&
+                       string.Equals(d.Address, mac, StringComparison.OrdinalIgnoreCase))
+                 ?? list.FirstOrDefault(d => !string.IsNullOrEmpty(lastName) &&
+                       d.Name.Contains(lastName, StringComparison.OrdinalIgnoreCase));
+
+        if (match == null)
+        {
+            RaiseStatus("未检测到上次连接的设备，请确认设备已开机后手动连接");
+            return false;
+        }
+
+        RaiseStatus($"检测到 {match.DisplayName}，正在连接…");
+        return await ConnectInternalAsync(match.Key, match.Name, autoReconnect, quiet: true);
+    }
+
+    /// <summary>轻量探测：设备能否被系统打开（不建立 GATT 连接）。</summary>
+    private async Task<bool> ProbeDeviceAsync(string deviceKey)
+    {
+        try
+        {
+            var device = await ResolveDeviceAsync(deviceKey);
+            if (device == null)
+            {
+                return false;
+            }
+
+            device.Dispose();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task<bool> ConnectInternalAsync(string deviceKey, string? deviceName, bool autoReconnect, bool quiet)
     {
         _reconnectCts ??= new CancellationTokenSource();

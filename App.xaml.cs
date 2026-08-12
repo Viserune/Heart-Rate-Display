@@ -56,14 +56,14 @@ public partial class App : Application
     private async Task TryAutoConnectAsync()
     {
         var settings = _settings!;
-        var ok = await _ble!.ConnectAsync(
+        var ok = await _ble!.AutoConnectLastAsync(
             settings.Current.LastDeviceId!,
             settings.Current.LastDeviceName,
             autoReconnect: settings.Current.AutoReconnect);
 
         if (!ok)
         {
-            _tray?.ShowBalloon("HeartRater", "自动连接失败，可在主界面重新选择设备");
+            _tray?.ShowBalloon("HeartRater", "自动连接失败：未检测到上次连接的设备，请在主界面重新连接");
         }
     }
 

@@ -98,8 +98,9 @@ if ($mainWin) {
     } else { T "演示模式按钮存在" $false }
 } else { T "主窗口 UIA 可访问" $false }
 
-# 通过 UIA 打开自启开关（先清注册表，确保 Toggle 后为 On 状态）
+# 通过 UIA 打开自启开关（先清注册表与设置，确保开关从 Off 开始、Toggle 后为 On）
 Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name HeartRater -ErrorAction SilentlyContinue
+Remove-Item -Path (Join-Path $env:LOCALAPPDATA "HeartRater\settings.json") -ErrorAction SilentlyContinue
 $tgCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "开机自动启动（托盘驻留）")
 $tg = $mainWin.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $tgCond)
 if ($tg) {
