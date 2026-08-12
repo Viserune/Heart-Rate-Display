@@ -7,19 +7,24 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using HeartRater.Services;
 
 namespace HeartRater;
 
 public partial class MainWindow : Window
 {
+    private const double SettingsPanelExpandedHeight = 320;
+    private const double WindowExpandDelta = 130;
+
     private readonly SettingsService _settings;
     private readonly BleHeartRateService _ble;
     private readonly HudWindow _hud;
     private readonly TrayIconService _tray;
 
     private readonly ObservableCollection<BleDeviceInfo> _devices = new();
-    private SettingsWindow? _settingsWindow;
+    private bool _suppressToggleEvents;
+    private bool _settingsExpanded;
 
     public MainWindow(SettingsService settings, BleHeartRateService ble, HudWindow hud, TrayIconService tray)
     {
@@ -45,20 +50,102 @@ public partial class MainWindow : Window
         _tray.ToggleLockRequested += ToggleLockFromTrayPublic;
         _tray.ExitRequested += () => Application.Current.Shutdown();
 
-        // 托盘菜单锁定状态与当前设置同步
-        _tray.Locked = _settings.Current.HudLocked;
+        LoadSettingsIntoUi();
 
         SourceInitialized += (_, _) =>
         {
             var s = _settings.Current;
-            if (s.MainWidth >= 360 && s.MainHeight >= 500)
+            if (s.MainWidth >= 360 && s.MainHeight >= 480)
             {
                 Width = s.MainWidth;
                 Height = s.MainHeight;
             }
 
             WindowChrome.ApplyMica(this);
+            FadeInWindow();
         };
+    }
+
+    // ==================== 动画 ====================
+
+    /// <summary>窗口启动淡入。</summary>
+    private void FadeInWindow()
+    {
+        var anim = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        BeginAnimation(OpacityProperty, anim);
+    }
+
+    /// <summary>心率数字脉冲（放大回弹），与颜色变化同时发生。</summary>
+    private void PulseHeartRate()
+    {
+        HeartRateScale.BeginAnimation(ScaleTransform.ScaleXProperty, BuildPulse());
+        HeartRateScale.BeginAnimation(ScaleTransform.ScaleYProperty, BuildPulse());
+    }
+
+    private static DoubleAnimationUsingKeyFrames BuildPulse()
+    {
+        var anim = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromMilliseconds(200),
+        };
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(1.08, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(90)),
+            new CubicEase { EasingMode = EasingMode.EaseOut }));
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(200)),
+            new CubicEase { EasingMode = EasingMode.EaseIn }));
+        return anim;
+    }
+
+    /// <summary>展开设置面板：高度/透明度动画 + 窗口高度同步增高（相对增量，适配任意窗口高度）。</summary>
+    private void ExpandSettings()
+    {
+        if (_settingsExpanded)
+        {
+            return;
+        }
+
+        _settingsExpanded = true;
+        SettingsButton.Content = "收起设置";
+
+        AnimatePanel(0, SettingsPanelExpandedHeight, 0, 1, Height, Height + WindowExpandDelta);
+    }
+
+    /// <summary>收起设置面板（反向动画）。</summary>
+    private void CollapseSettings()
+    {
+        if (!_settingsExpanded)
+        {
+            return;
+        }
+
+        _settingsExpanded = false;
+        SettingsButton.Content = "设置";
+
+        AnimatePanel(SettingsPanelExpandedHeight, 0, 1, 0, Height, Height - WindowExpandDelta);
+    }
+
+    private void AnimatePanel(double fromMax, double toMax, double fromOp, double toOp, double fromWin, double toWin)
+    {
+        var duration = TimeSpan.FromMilliseconds(240);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        // 面板最大高度（0 ↔ 展开高度）
+        var maxAnim = new DoubleAnimation(fromMax, toMax, duration) { EasingFunction = ease };
+        maxAnim.Completed += (_, _) => SettingsPanel.MaxHeight = toMax;
+        SettingsPanel.BeginAnimation(Border.MaxHeightProperty, maxAnim);
+
+        // 面板透明度（淡入/淡出）
+        var opAnim = new DoubleAnimation(fromOp, toOp, duration) { EasingFunction = ease };
+        opAnim.Completed += (_, _) => SettingsPanel.Opacity = toOp;
+        SettingsPanel.BeginAnimation(Border.OpacityProperty, opAnim);
+
+        // 窗口高度同步增高/回落（动画结束后写入实际值，不钉住属性）
+        var winAnim = new DoubleAnimation(fromWin, toWin, duration) { EasingFunction = ease };
+        winAnim.Completed += (_, _) => Height = toWin;
+        BeginAnimation(HeightProperty, winAnim);
     }
 
     // ==================== 公开入口（托盘 / App 调用） ====================
@@ -78,6 +165,9 @@ public partial class MainWindow : Window
     {
         _settings.Current.HudVisible = !_settings.Current.HudVisible;
         _settings.Save();
+        _suppressToggleEvents = true;
+        HudToggle.IsChecked = _settings.Current.HudVisible;
+        _suppressToggleEvents = false;
         ApplyHudVisibility();
     }
 
@@ -85,6 +175,9 @@ public partial class MainWindow : Window
     {
         _settings.Current.HudLocked = !_settings.Current.HudLocked;
         _settings.Save();
+        _suppressToggleEvents = true;
+        LockedToggle.IsChecked = _settings.Current.HudLocked;
+        _suppressToggleEvents = false;
         _hud.Locked = _settings.Current.HudLocked;
         _tray.Locked = _settings.Current.HudLocked;
         SetStatus(_settings.Current.HudLocked ? "已锁定悬浮窗" : "已解锁悬浮窗");
@@ -95,13 +188,34 @@ public partial class MainWindow : Window
         StatusText.Text = message;
     }
 
-    // ==================== 设置窗口 ====================
+    // ==================== 设置加载 ====================
+
+    private void LoadSettingsIntoUi()
+    {
+        var s = _settings.Current;
+        _suppressToggleEvents = true;
+        AutoConnectToggle.IsChecked = s.AutoConnectOnStart;
+        AutoStartToggle.IsChecked = s.AutoStartEnabled;
+        AutoReconnectToggle.IsChecked = s.AutoReconnect;
+        HudToggle.IsChecked = s.HudVisible;
+        ClickThroughToggle.IsChecked = s.HudClickThrough;
+        LockedToggle.IsChecked = s.HudLocked;
+        _tray.Locked = s.HudLocked;
+        _suppressToggleEvents = false;
+    }
+
+    // ==================== 设置面板 ====================
 
     private void OnSettingsClicked(object sender, RoutedEventArgs e)
     {
-        _settingsWindow ??= new SettingsWindow(_settings, _hud, _tray);
-        _settingsWindow.Owner = this;
-        _settingsWindow.ShowFromMain();
+        if (_settingsExpanded)
+        {
+            CollapseSettings();
+        }
+        else
+        {
+            ExpandSettings();
+        }
     }
 
     // ==================== 蓝牙 UI ====================
@@ -199,6 +313,7 @@ public partial class MainWindow : Window
     {
         HeartRateDisplay.Text = bpm.ToString();
         HeartRateDisplay.Foreground = new SolidColorBrush(HrColors.GetColor(bpm));
+        PulseHeartRate();
         _hud.SetHeartRate(bpm);
     }
 
@@ -231,7 +346,80 @@ public partial class MainWindow : Window
         HeartRateDisplay.Foreground = new SolidColorBrush(HrColors.GetColor(bpm));
     }
 
-    // ==================== 悬浮窗 ====================
+    // ==================== 设置开关 ====================
+
+    private void OnAutoConnectToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        _settings.Current.AutoConnectOnStart = AutoConnectToggle.IsChecked == true;
+        _settings.Save();
+    }
+
+    private void OnAutoStartToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        var enabled = AutoStartToggle.IsChecked == true;
+        AutoStartService.SetEnabled(enabled);
+        _settings.Current.AutoStartEnabled = enabled;
+        _settings.Save();
+        SetStatus(enabled ? "已开启开机自启" : "已关闭开机自启");
+    }
+
+    private void OnAutoReconnectToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        _settings.Current.AutoReconnect = AutoReconnectToggle.IsChecked == true;
+        _settings.Save();
+    }
+
+    private void OnHudToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        _settings.Current.HudVisible = HudToggle.IsChecked == true;
+        _settings.Save();
+        ApplyHudVisibility();
+    }
+
+    private void OnClickThroughToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        _settings.Current.HudClickThrough = ClickThroughToggle.IsChecked == true;
+        _settings.Save();
+        _hud.ClickThrough = ClickThroughToggle.IsChecked == true;
+    }
+
+    private void OnLockedToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        _settings.Current.HudLocked = LockedToggle.IsChecked == true;
+        _settings.Save();
+        _hud.Locked = LockedToggle.IsChecked == true;
+        _tray.Locked = LockedToggle.IsChecked == true;
+    }
 
     private void ApplyHudVisibility()
     {
