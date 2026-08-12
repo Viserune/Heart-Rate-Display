@@ -14,7 +14,7 @@
         <Grid x:Name="MainView">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -38,13 +38,13 @@
                            HorizontalAlignment="Center" Margin="0,8,0,0" />
             </StackPanel>
 
-            <!-- 设备卡片 -->
+            <!-- 设备卡片（高度随内容自适应，列表按行数撑高、上限 220） -->
             <Border Grid.Row="1" Style="{DynamicResource CardBorderStyle}" Margin="0,0,0,10">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock Text="设备" Style="{DynamicResource CardTitleStyle}" />
                     <Grid Grid.Row="1" Margin="0,0,0,8">
@@ -58,7 +58,12 @@
                         <Button x:Name="ScanButton" Grid.Column="1" Content="扫描设备" Width="92" Margin="8,0,0,0"
                                 Click="OnScanClicked" />
                     </Grid>
-                    <ListBox x:Name="DeviceList" Grid.Row="2" MinHeight="100"
+                    <!-- 空态提示：未扫描到时只占一行，不撑出大片空白 -->
+                    <TextBlock x:Name="EmptyHint" Grid.Row="2" Text="尚未扫描设备，点击上方「扫描设备」"
+                               FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="4,6,4,4" VerticalAlignment="Center" />
+                    <ListBox x:Name="DeviceList" Grid.Row="2" MaxHeight="220"
+                             Visibility="Collapsed"
                              DisplayMemberPath="DisplayName"
                              SelectionChanged="OnDeviceSelectionChanged" />
                 </Grid>

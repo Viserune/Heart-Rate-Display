@@ -33,6 +33,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         DeviceList.ItemsSource = _devices;
+        UpdateDeviceListState();
 
         // 蓝牙事件
         _ble.StateChanged += OnBleStateChanged;
@@ -220,6 +221,8 @@ public partial class MainWindow : Window
                 _devices.Add(d);
             }
 
+            UpdateDeviceListState();
+
             // 扫描结果自动选中上次连接的设备（如仍在列表中），否则不选中
             if (lastDeviceId != null)
             {
@@ -247,11 +250,47 @@ public partial class MainWindow : Window
     private void OnDeviceFilterChanged(object sender, TextChangedEventArgs e)
     {
         var filter = DeviceFilterBox.Text?.Trim() ?? "";
+
+        if (_devices.Count == 0)
+        {
+            // 尚未扫描
+            DeviceList.Visibility = Visibility.Collapsed;
+            EmptyHint.Text = "尚未扫描设备，点击上方「扫描设备」";
+            EmptyHint.Visibility = Visibility.Visible;
+            return;
+        }
+
         var source = string.IsNullOrEmpty(filter)
             ? _devices
             : new ObservableCollection<BleDeviceInfo>(
                 _devices.Where(d => d.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)));
+
         DeviceList.ItemsSource = source;
+        if (source.Count == 0)
+        {
+            // 筛选无匹配 → 提示，避免列表空白
+            DeviceList.Visibility = Visibility.Collapsed;
+            EmptyHint.Text = "没有匹配的设备";
+            EmptyHint.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            DeviceList.Visibility = Visibility.Visible;
+            EmptyHint.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>根据设备数量切换 空态提示 / 设备列表 显示（列表按行数自适应，不撑空白）。</summary>
+    private void UpdateDeviceListState()
+    {
+        var hasDevices = _devices.Count > 0;
+        DeviceList.Visibility = hasDevices ? Visibility.Visible : Visibility.Collapsed;
+        EmptyHint.Visibility = hasDevices ? Visibility.Collapsed : Visibility.Visible;
+        EmptyHint.Text = hasDevices ? "" : "尚未扫描设备，点击上方「扫描设备」";
+        if (hasDevices)
+        {
+            DeviceList.ItemsSource = _devices;
+        }
     }
 
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
