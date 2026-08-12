@@ -14,9 +14,6 @@ namespace HeartRater;
 
 public partial class MainWindow : Window
 {
-    private const double SettingsPanelExpandedHeight = 320;
-    private const double WindowExpandDelta = 130;
-
     private readonly SettingsService _settings;
     private readonly BleHeartRateService _ble;
     private readonly HudWindow _hud;
@@ -24,7 +21,7 @@ public partial class MainWindow : Window
 
     private readonly ObservableCollection<BleDeviceInfo> _devices = new();
     private bool _suppressToggleEvents;
-    private bool _settingsExpanded;
+    private bool _viewSwitching;
 
     public MainWindow(SettingsService settings, BleHeartRateService ble, HudWindow hud, TrayIconService tray)
     {
@@ -51,9 +48,6 @@ public partial class MainWindow : Window
         _tray.ExitRequested += () => Application.Current.Shutdown();
 
         LoadSettingsIntoUi();
-
-        // 窗口失焦（点击其他应用）→ 收起设备下拉
-        Deactivated += (_, _) => CloseDeviceDropdown();
 
         SourceInitialized += (_, _) =>
         {
@@ -102,53 +96,47 @@ public partial class MainWindow : Window
         return anim;
     }
 
-    /// <summary>展开设置面板：高度/透明度动画 + 窗口高度同步增高（相对增量，适配任意窗口高度）。</summary>
-    private void ExpandSettings()
+    // ==================== 视图切换（主界面 ↔ 设置） ====================
+
+    private void OnSettingsClicked(object sender, RoutedEventArgs e)
     {
-        if (_settingsExpanded)
+        SwitchToSettings(show: true);
+    }
+
+    private void OnExitSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        SwitchToSettings(show: false);
+    }
+
+    /// <summary>主视图与设置视图整窗口切换：旧视图淡出 → 新视图淡入。</summary>
+    private void SwitchToSettings(bool show)
+    {
+        if (_viewSwitching)
         {
             return;
         }
 
-        _settingsExpanded = true;
-        SettingsButton.Content = "收起设置";
+        _viewSwitching = true;
+        var from = show ? MainView : SettingsView;
+        var to = show ? SettingsView : MainView;
 
-        AnimatePanel(0, SettingsPanelExpandedHeight, 0, 1, Height, Height + WindowExpandDelta);
-    }
-
-    /// <summary>收起设置面板（反向动画）。</summary>
-    private void CollapseSettings()
-    {
-        if (!_settingsExpanded)
+        var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(120))
         {
-            return;
-        }
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn },
+        };
+        fadeOut.Completed += (_, _) =>
+        {
+            from.Visibility = Visibility.Collapsed;
+            to.Visibility = Visibility.Visible;
 
-        _settingsExpanded = false;
-        SettingsButton.Content = "设置";
-
-        AnimatePanel(SettingsPanelExpandedHeight, 0, 1, 0, Height, Height - WindowExpandDelta);
-    }
-
-    private void AnimatePanel(double fromMax, double toMax, double fromOp, double toOp, double fromWin, double toWin)
-    {
-        var duration = TimeSpan.FromMilliseconds(240);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-        // 面板最大高度（0 ↔ 展开高度）
-        var maxAnim = new DoubleAnimation(fromMax, toMax, duration) { EasingFunction = ease };
-        maxAnim.Completed += (_, _) => SettingsPanel.MaxHeight = toMax;
-        SettingsPanel.BeginAnimation(Border.MaxHeightProperty, maxAnim);
-
-        // 面板透明度（淡入/淡出）
-        var opAnim = new DoubleAnimation(fromOp, toOp, duration) { EasingFunction = ease };
-        opAnim.Completed += (_, _) => SettingsPanel.Opacity = toOp;
-        SettingsPanel.BeginAnimation(Border.OpacityProperty, opAnim);
-
-        // 窗口高度同步增高/回落（动画结束后写入实际值，不钉住属性）
-        var winAnim = new DoubleAnimation(fromWin, toWin, duration) { EasingFunction = ease };
-        winAnim.Completed += (_, _) => Height = toWin;
-        BeginAnimation(HeightProperty, winAnim);
+            var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            };
+            fadeIn.Completed += (_, _) => _viewSwitching = false;
+            to.BeginAnimation(OpacityProperty, fadeIn);
+        };
+        from.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     // ==================== 公开入口（托盘 / App 调用） ====================
@@ -207,90 +195,6 @@ public partial class MainWindow : Window
         _suppressToggleEvents = false;
     }
 
-    // ==================== 设置面板 ====================
-
-    private void OnSettingsClicked(object sender, RoutedEventArgs e)
-    {
-        if (_settingsExpanded)
-        {
-            CollapseSettings();
-        }
-        else
-        {
-            ExpandSettings();
-        }
-    }
-
-    // ==================== 设备下拉菜单 ====================
-
-    private void OnDeviceFilterBoxClicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        // 点击输入框：展开/收起设备下拉
-        if (DevicePopup.IsOpen)
-        {
-            CloseDeviceDropdown();
-        }
-        else
-        {
-            OpenDeviceDropdown();
-        }
-    }
-
-    private void OnDeviceFilterBoxLostFocus(object sender, RoutedEventArgs e)
-    {
-        // 焦点移出输入框（点击外部/其他控件）→ 收起下拉
-        if (DevicePopup.IsOpen)
-        {
-            CloseDeviceDropdown();
-        }
-    }
-
-    private void OpenDeviceDropdown()
-    {
-        if (DeviceList.Items.Count == 0)
-        {
-            return;
-        }
-
-        DevicePopup.IsOpen = true;
-        AnimateDropdown(open: true);
-    }
-
-    private void CloseDeviceDropdown()
-    {
-        if (!DevicePopup.IsOpen)
-        {
-            return;
-        }
-
-        AnimateDropdown(open: false);
-    }
-
-    /// <summary>下拉展开/收起动画：列表高度 + 透明度（展开后锚定值，收起完关闭 Popup）。</summary>
-    private void AnimateDropdown(bool open)
-    {
-        const double expandedHeight = 260;
-        var duration = TimeSpan.FromMilliseconds(200);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-        var targetH = open ? expandedHeight : 0;
-        var hAnim = new DoubleAnimation(DeviceList.MaxHeight, targetH, duration) { EasingFunction = ease };
-        hAnim.Completed += (_, _) =>
-        {
-            DeviceList.MaxHeight = targetH;
-            if (!open)
-            {
-                DevicePopup.IsOpen = false;
-            }
-        };
-        DeviceList.BeginAnimation(ListBox.MaxHeightProperty, hAnim);
-
-        var targetO = open ? 1.0 : 0.0;
-        var oAnim = new DoubleAnimation(DeviceList.Opacity, targetO, duration) { EasingFunction = ease };
-        oAnim.Completed += (_, _) => DeviceList.Opacity = targetO;
-        DeviceList.BeginAnimation(ListBox.OpacityProperty, oAnim);
-    }
-
     // ==================== 蓝牙 UI ====================
 
     private async void OnScanClicked(object sender, RoutedEventArgs e)
@@ -316,11 +220,16 @@ public partial class MainWindow : Window
                 _devices.Add(d);
             }
 
-            // 扫描结果默认展示在输入栏（下拉自动展开），未选中时清空输入框
-            DeviceFilterBox.Text = DeviceList.SelectedItem is BleDeviceInfo
-                ? ((BleDeviceInfo)DeviceList.SelectedItem).DisplayName
-                : "";
-            OpenDeviceDropdown();
+            // 扫描结果自动选中上次连接的设备（如仍在列表中），否则不选中
+            if (lastDeviceId != null)
+            {
+                var last = heartDevices.FirstOrDefault(d => d.Key == lastDeviceId);
+                if (last != null)
+                {
+                    DeviceList.SelectedItem = last;
+                    ConnectButton.IsEnabled = true;
+                }
+            }
 
             var filteredCount = results.Count - heartDevices.Count;
             SetStatus(_devices.Count == 0
@@ -347,17 +256,7 @@ public partial class MainWindow : Window
 
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // 选中设备：名称显示在输入栏，收起下拉
-        if (DeviceList.SelectedItem is BleDeviceInfo device)
-        {
-            DeviceFilterBox.Text = device.DisplayName;
-            ConnectButton.IsEnabled = true;
-            CloseDeviceDropdown();
-        }
-        else
-        {
-            ConnectButton.IsEnabled = false;
-        }
+        ConnectButton.IsEnabled = DeviceList.SelectedItem is BleDeviceInfo;
     }
 
     private async void OnConnectClicked(object sender, RoutedEventArgs e)
