@@ -38,36 +38,47 @@
                            HorizontalAlignment="Center" Margin="0,8,0,0" />
             </StackPanel>
 
-            <!-- 设备卡片（高度随内容自适应，列表按行数撑高、上限 220） -->
+            <!-- 设备卡片：点击搜索框弹出下拉列表 -->
             <Border Grid.Row="1" Style="{DynamicResource CardBorderStyle}" Margin="0,0,0,10">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+                <StackPanel>
                     <TextBlock Text="设备" Style="{DynamicResource CardTitleStyle}" />
-                    <Grid Grid.Row="1" Margin="0,0,0,8">
+                    <Grid Margin="0,0,0,2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBox x:Name="DeviceFilterBox" VerticalContentAlignment="Center"
-                                 Padding="8,6" ToolTip="按名称筛选"
+                                 Padding="8,6" ToolTip="点击展开设备列表，可直接输入筛选"
+                                 PreviewMouseLeftButtonDown="OnDeviceFilterBoxClicked"
+                                 LostKeyboardFocus="OnDeviceFilterBoxLostFocus"
                                  TextChanged="OnDeviceFilterChanged" />
                         <Button x:Name="ScanButton" Grid.Column="1" Content="扫描设备" Width="92" Margin="8,0,0,0"
                                 Click="OnScanClicked" />
                     </Grid>
-                    <!-- 空态提示：未扫描到时只占一行，不撑出大片空白 -->
-                    <TextBlock x:Name="EmptyHint" Grid.Row="2" Text="尚未扫描设备，点击上方「扫描设备」"
-                               FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}"
-                               Margin="4,6,4,4" VerticalAlignment="Center" />
-                    <ListBox x:Name="DeviceList" Grid.Row="2" MaxHeight="220"
-                             Visibility="Collapsed"
-                             DisplayMemberPath="DisplayName"
-                             SelectionChanged="OnDeviceSelectionChanged" />
-                </Grid>
+                </StackPanel>
             </Border>
+
+            <!-- 设备下拉（点击搜索框展开，高度随内容自适应、上限 180） -->
+            <Popup x:Name="DevicePopup"
+                   PlacementTarget="{Binding ElementName=DeviceFilterBox}"
+                   Placement="Bottom" StaysOpen="True" AllowsTransparency="True"
+                   PopupAnimation="None" IsOpen="False" VerticalOffset="2">
+                <Border Style="{DynamicResource CardBorderStyle}" Padding="4"
+                        Background="{DynamicResource WindowBackgroundBrush}"
+                        Width="{Binding ActualWidth, ElementName=DeviceFilterBox}">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" BlurRadius="12" ShadowDepth="2" Opacity="0.3" />
+                    </Border.Effect>
+                    <Grid>
+                        <ListBox x:Name="DeviceList" MaxHeight="0" Opacity="0"
+                                 DisplayMemberPath="DisplayName"
+                                 SelectionChanged="OnDeviceSelectionChanged" />
+                        <TextBlock x:Name="EmptyHint" Text="尚未扫描设备，点击「扫描设备」"
+                                   FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="8,8" Visibility="Collapsed" />
+                    </Grid>
+                </Border>
+            </Popup>
 
             <Button x:Name="ConnectButton" Grid.Row="2" Content="连接" Height="36" Margin="0,0,0,10"
                     Style="{DynamicResource AccentButtonStyle}" FontWeight="SemiBold"

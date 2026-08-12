@@ -33,7 +33,6 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         DeviceList.ItemsSource = _devices;
-        UpdateDeviceListState();
 
         // 蓝牙事件
         _ble.StateChanged += OnBleStateChanged;
@@ -49,6 +48,9 @@ public partial class MainWindow : Window
         _tray.ExitRequested += () => Application.Current.Shutdown();
 
         LoadSettingsIntoUi();
+
+        // 窗口失焦（点击其他应用）→ 收起设备下拉
+        Deactivated += (_, _) => CloseDeviceDropdown();
 
         SourceInitialized += (_, _) =>
         {
@@ -221,18 +223,11 @@ public partial class MainWindow : Window
                 _devices.Add(d);
             }
 
-            UpdateDeviceListState();
-
-            // 扫描结果自动选中上次连接的设备（如仍在列表中），否则不选中
-            if (lastDeviceId != null)
-            {
-                var last = heartDevices.FirstOrDefault(d => d.Key == lastDeviceId);
-                if (last != null)
-                {
-                    DeviceList.SelectedItem = last;
-                    ConnectButton.IsEnabled = true;
-                }
-            }
+            // 扫描完成：自动展开下拉；选中上次设备（在列表中时）名称入框
+            DeviceFilterBox.Text = DeviceList.SelectedItem is BleDeviceInfo
+                ? ((BleDeviceInfo)DeviceList.SelectedItem).DisplayName
+                : "";
+            OpenDeviceDropdown();
 
             var filteredCount = results.Count - heartDevices.Count;
             SetStatus(_devices.Count == 0
@@ -247,28 +242,107 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnDeviceFilterChanged(object sender, TextChangedEventArgs e)
-    {
-        var filter = DeviceFilterBox.Text?.Trim() ?? "";
+    // ==================== 设备下拉菜单 ====================
 
+    private void OnDeviceFilterBoxClicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        // 点击搜索框：展开/收起设备下拉
+        if (DevicePopup.IsOpen)
+        {
+            CloseDeviceDropdown();
+        }
+        else
+        {
+            OpenDeviceDropdown();
+        }
+    }
+
+    private void OnDeviceFilterBoxLostFocus(object sender, RoutedEventArgs e)
+    {
+        // 焦点移出搜索框（点击外部/其他控件）→ 收起下拉
+        if (DevicePopup.IsOpen)
+        {
+            CloseDeviceDropdown();
+        }
+    }
+
+    private void OpenDeviceDropdown()
+    {
+        DevicePopup.IsOpen = true;
+        RefreshDropdownContent();
+        AnimateDropdown(open: true);
+    }
+
+    private void CloseDeviceDropdown()
+    {
+        if (!DevicePopup.IsOpen)
+        {
+            return;
+        }
+
+        AnimateDropdown(open: false);
+    }
+
+    /// <summary>刷新下拉内容：有设备显示列表、无设备显示空态提示。</summary>
+    private void RefreshDropdownContent()
+    {
         if (_devices.Count == 0)
         {
-            // 尚未扫描
             DeviceList.Visibility = Visibility.Collapsed;
-            EmptyHint.Text = "尚未扫描设备，点击上方「扫描设备」";
+            EmptyHint.Text = "尚未扫描设备，点击「扫描设备」";
             EmptyHint.Visibility = Visibility.Visible;
             return;
         }
 
+        // 空态提示只在筛选无匹配时出现，正常列表用 MaxHeight 撑高
+        EmptyHint.Visibility = Visibility.Collapsed;
+        DeviceList.Visibility = Visibility.Visible;
+        DeviceList.ItemsSource = _devices;
+        DeviceList.SelectedItem = null;
+    }
+
+    /// <summary>下拉展开/收起动画：列表高度 + 透明度（展开后锚定值，收起完关闭 Popup）。</summary>
+    private void AnimateDropdown(bool open)
+    {
+        const double expandedHeight = 180;
+        var duration = TimeSpan.FromMilliseconds(180);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        var targetH = open ? expandedHeight : 0;
+        var hAnim = new DoubleAnimation(DeviceList.MaxHeight, targetH, duration) { EasingFunction = ease };
+        hAnim.Completed += (_, _) =>
+        {
+            DeviceList.MaxHeight = targetH;
+            if (!open)
+            {
+                DevicePopup.IsOpen = false;
+            }
+        };
+        DeviceList.BeginAnimation(ListBox.MaxHeightProperty, hAnim);
+
+        var targetO = open ? 1.0 : 0.0;
+        var oAnim = new DoubleAnimation(DeviceList.Opacity, targetO, duration) { EasingFunction = ease };
+        oAnim.Completed += (_, _) => DeviceList.Opacity = targetO;
+        DeviceList.BeginAnimation(ListBox.OpacityProperty, oAnim);
+    }
+
+    private void OnDeviceFilterChanged(object sender, TextChangedEventArgs e)
+    {
+        // 程序内设置名称（选中/扫描）不重新过滤
+        if (!DevicePopup.IsOpen || _devices.Count == 0)
+        {
+            return;
+        }
+
+        var filter = DeviceFilterBox.Text?.Trim() ?? "";
         var source = string.IsNullOrEmpty(filter)
             ? _devices
             : new ObservableCollection<BleDeviceInfo>(
                 _devices.Where(d => d.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)));
 
-        DeviceList.ItemsSource = source;
         if (source.Count == 0)
         {
-            // 筛选无匹配 → 提示，避免列表空白
+            // 筛选无匹配 → 提示
             DeviceList.Visibility = Visibility.Collapsed;
             EmptyHint.Text = "没有匹配的设备";
             EmptyHint.Visibility = Visibility.Visible;
@@ -277,25 +351,23 @@ public partial class MainWindow : Window
         {
             DeviceList.Visibility = Visibility.Visible;
             EmptyHint.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    /// <summary>根据设备数量切换 空态提示 / 设备列表 显示（列表按行数自适应，不撑空白）。</summary>
-    private void UpdateDeviceListState()
-    {
-        var hasDevices = _devices.Count > 0;
-        DeviceList.Visibility = hasDevices ? Visibility.Visible : Visibility.Collapsed;
-        EmptyHint.Visibility = hasDevices ? Visibility.Collapsed : Visibility.Visible;
-        EmptyHint.Text = hasDevices ? "" : "尚未扫描设备，点击上方「扫描设备」";
-        if (hasDevices)
-        {
-            DeviceList.ItemsSource = _devices;
+            DeviceList.ItemsSource = source;
         }
     }
 
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        ConnectButton.IsEnabled = DeviceList.SelectedItem is BleDeviceInfo;
+        // 选中设备：名称显示在搜索框，收起下拉
+        if (DeviceList.SelectedItem is BleDeviceInfo device)
+        {
+            DeviceFilterBox.Text = device.DisplayName;
+            ConnectButton.IsEnabled = true;
+            CloseDeviceDropdown();
+        }
+        else
+        {
+            ConnectButton.IsEnabled = false;
+        }
     }
 
     private async void OnConnectClicked(object sender, RoutedEventArgs e)
