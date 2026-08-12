@@ -59,6 +59,8 @@
                           Checked="OnHudToggled" Unchecked="OnHudToggled" />
                 <CheckBox x:Name="ClickThroughToggle" Content="悬浮窗点击穿透" Margin="0,4"
                           Checked="OnClickThroughToggled" Unchecked="OnClickThroughToggled" />
+                <CheckBox x:Name="LockedToggle" Content="锁定悬浮窗（全屏下不拖动、可点击后面）" Margin="0,4"
+                          Checked="OnLockedToggled" Unchecked="OnLockedToggled" />
             </StackPanel>
         </GroupBox>
 

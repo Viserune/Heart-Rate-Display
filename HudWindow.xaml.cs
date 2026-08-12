@@ -31,6 +31,7 @@ public partial class HudWindow : Window
     private readonly SettingsService _settings;
     private IntPtr _hwnd;
     private bool _clickThrough;
+    private bool _locked;
     private bool _dragging;
     private System.Windows.Point _dragStartScreen;
     private double _dragStartLeft;
@@ -40,6 +41,7 @@ public partial class HudWindow : Window
     {
         _settings = settings;
         _clickThrough = settings.Current.HudClickThrough;
+        _locked = settings.Current.HudLocked;
         InitializeComponent();
 
         // 默认停靠屏幕右上角
@@ -55,6 +57,25 @@ public partial class HudWindow : Window
         }
 
         Loaded += OnLoaded;
+        Closing += OnClosing;
+    }
+
+    /// <summary>
+    /// 是否锁定悬浮窗：锁定后禁拖动，并强制点击穿透（全屏游戏/视频时不会误拖动、可点击到后面）。
+    /// </summary>
+    public bool Locked
+    {
+        get => _locked;
+        set
+        {
+            if (_locked == value)
+            {
+                return;
+            }
+
+            _locked = value;
+            ApplyWindowStyles();
+        }
     }
 
     /// <summary>是否点击穿透（鼠标事件直接穿透到下层窗口）。</summary>
@@ -140,7 +161,8 @@ public partial class HudWindow : Window
 
         long style = GetWindowLongPtrW(_hwnd, GWL_EXSTYLE);
         style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-        if (_clickThrough)
+        // 锁定时强制点击穿透（可点击到悬浮窗后面的窗口/全屏应用）
+        if (_locked || _clickThrough)
         {
             style |= WS_EX_TRANSPARENT;
         }
@@ -157,7 +179,8 @@ public partial class HudWindow : Window
 
     private void OnPointerPressed(object sender, MouseButtonEventArgs e)
     {
-        if (_clickThrough)
+        // 锁定或点击穿透时禁拖动
+        if (_locked || _clickThrough)
         {
             return;
         }
@@ -177,8 +200,11 @@ public partial class HudWindow : Window
         }
 
         var cur = PointToScreen(e.GetPosition(this));
-        Left = _dragStartLeft + (cur.X - _dragStartScreen.X);
-        Top = _dragStartTop + (cur.Y - _dragStartScreen.Y);
+        // PointToScreen 返回物理像素，而 Left/Top 是逻辑(DIP)坐标，需按 DPI 缩放换算，
+        // 否则高 DPI 下拖动距离会漂移放大，保存的位置也不准
+        var dpiScale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        Left = _dragStartLeft + (cur.X - _dragStartScreen.X) / dpiScale;
+        Top = _dragStartTop + (cur.Y - _dragStartScreen.Y) / dpiScale;
         e.Handled = true;
     }
 
@@ -190,10 +216,22 @@ public partial class HudWindow : Window
         }
 
         _dragging = false;
+        SavePosition();
+        e.Handled = true;
+    }
+
+    /// <summary>把当前悬浮窗位置写入设置并持久化。</summary>
+    private void SavePosition()
+    {
         _settings.Current.HudX = Left;
         _settings.Current.HudY = Top;
         _settings.Save();
-        e.Handled = true;
+    }
+
+    private void OnClosing(object sender, CancelEventArgs e)
+    {
+        // 应用退出（托盘“退出”）时也保存一次位置，确保关闭后再开启回到原位
+        SavePosition();
     }
 
     // ---- P/Invoke ----

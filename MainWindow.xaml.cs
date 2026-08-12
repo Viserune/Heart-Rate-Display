@@ -44,6 +44,7 @@ public partial class MainWindow : Window
         _tray.ShowMainRequested += ShowMainPublic;
         _tray.ToggleHudRequested += ToggleHudFromTrayPublic;
         _tray.ToggleDemoRequested += ToggleDemoFromTrayPublic;
+        _tray.ToggleLockRequested += ToggleLockFromTrayPublic;
         _tray.ExitRequested += () => Application.Current.Shutdown();
 
         LoadSettingsIntoUi();
@@ -87,6 +88,18 @@ public partial class MainWindow : Window
         _ = ToggleDemoAsync();
     }
 
+    public void ToggleLockFromTrayPublic()
+    {
+        _settings.Current.HudLocked = !_settings.Current.HudLocked;
+        _settings.Save();
+        _suppressToggleEvents = true;
+        LockedToggle.IsChecked = _settings.Current.HudLocked;
+        _suppressToggleEvents = false;
+        _hud.Locked = _settings.Current.HudLocked;
+        _tray.Locked = _settings.Current.HudLocked;
+        SetStatus(_settings.Current.HudLocked ? "已锁定悬浮窗" : "已解锁悬浮窗");
+    }
+
     public void SetStatus(string message)
     {
         StatusText.Text = message;
@@ -103,6 +116,8 @@ public partial class MainWindow : Window
         AutoReconnectToggle.IsChecked = s.AutoReconnect;
         HudToggle.IsChecked = s.HudVisible;
         ClickThroughToggle.IsChecked = s.HudClickThrough;
+        LockedToggle.IsChecked = s.HudLocked;
+        _tray.Locked = s.HudLocked;
         _suppressToggleEvents = false;
     }
 
@@ -269,6 +284,19 @@ public partial class MainWindow : Window
         _settings.Current.HudClickThrough = ClickThroughToggle.IsChecked == true;
         _settings.Save();
         _hud.ClickThrough = ClickThroughToggle.IsChecked == true;
+    }
+
+    private void OnLockedToggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressToggleEvents)
+        {
+            return;
+        }
+
+        _settings.Current.HudLocked = LockedToggle.IsChecked == true;
+        _settings.Save();
+        _hud.Locked = LockedToggle.IsChecked == true;
+        _tray.Locked = LockedToggle.IsChecked == true;
     }
 
     private void ApplyHudVisibility()
