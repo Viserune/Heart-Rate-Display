@@ -52,6 +52,9 @@ public partial class MainWindow : Window
 
         LoadSettingsIntoUi();
 
+        // 窗口失焦（点击其他应用）→ 收起设备下拉
+        Deactivated += (_, _) => CloseDeviceDropdown();
+
         SourceInitialized += (_, _) =>
         {
             var s = _settings.Current;
@@ -218,6 +221,76 @@ public partial class MainWindow : Window
         }
     }
 
+    // ==================== 设备下拉菜单 ====================
+
+    private void OnDeviceFilterBoxClicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        // 点击输入框：展开/收起设备下拉
+        if (DevicePopup.IsOpen)
+        {
+            CloseDeviceDropdown();
+        }
+        else
+        {
+            OpenDeviceDropdown();
+        }
+    }
+
+    private void OnDeviceFilterBoxLostFocus(object sender, RoutedEventArgs e)
+    {
+        // 焦点移出输入框（点击外部/其他控件）→ 收起下拉
+        if (DevicePopup.IsOpen)
+        {
+            CloseDeviceDropdown();
+        }
+    }
+
+    private void OpenDeviceDropdown()
+    {
+        if (DeviceList.Items.Count == 0)
+        {
+            return;
+        }
+
+        DevicePopup.IsOpen = true;
+        AnimateDropdown(open: true);
+    }
+
+    private void CloseDeviceDropdown()
+    {
+        if (!DevicePopup.IsOpen)
+        {
+            return;
+        }
+
+        AnimateDropdown(open: false);
+    }
+
+    /// <summary>下拉展开/收起动画：列表高度 + 透明度（展开后锚定值，收起完关闭 Popup）。</summary>
+    private void AnimateDropdown(bool open)
+    {
+        const double expandedHeight = 260;
+        var duration = TimeSpan.FromMilliseconds(200);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        var targetH = open ? expandedHeight : 0;
+        var hAnim = new DoubleAnimation(DeviceList.MaxHeight, targetH, duration) { EasingFunction = ease };
+        hAnim.Completed += (_, _) =>
+        {
+            DeviceList.MaxHeight = targetH;
+            if (!open)
+            {
+                DevicePopup.IsOpen = false;
+            }
+        };
+        DeviceList.BeginAnimation(ListBox.MaxHeightProperty, hAnim);
+
+        var targetO = open ? 1.0 : 0.0;
+        var oAnim = new DoubleAnimation(DeviceList.Opacity, targetO, duration) { EasingFunction = ease };
+        oAnim.Completed += (_, _) => DeviceList.Opacity = targetO;
+        DeviceList.BeginAnimation(ListBox.OpacityProperty, oAnim);
+    }
+
     // ==================== 蓝牙 UI ====================
 
     private async void OnScanClicked(object sender, RoutedEventArgs e)
@@ -242,6 +315,12 @@ public partial class MainWindow : Window
             {
                 _devices.Add(d);
             }
+
+            // 扫描结果默认展示在输入栏（下拉自动展开），未选中时清空输入框
+            DeviceFilterBox.Text = DeviceList.SelectedItem is BleDeviceInfo
+                ? ((BleDeviceInfo)DeviceList.SelectedItem).DisplayName
+                : "";
+            OpenDeviceDropdown();
 
             var filteredCount = results.Count - heartDevices.Count;
             SetStatus(_devices.Count == 0
@@ -268,7 +347,17 @@ public partial class MainWindow : Window
 
     private void OnDeviceSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        ConnectButton.IsEnabled = DeviceList.SelectedItem is BleDeviceInfo;
+        // 选中设备：名称显示在输入栏，收起下拉
+        if (DeviceList.SelectedItem is BleDeviceInfo device)
+        {
+            DeviceFilterBox.Text = device.DisplayName;
+            ConnectButton.IsEnabled = true;
+            CloseDeviceDropdown();
+        }
+        else
+        {
+            ConnectButton.IsEnabled = false;
+        }
     }
 
     private async void OnConnectClicked(object sender, RoutedEventArgs e)
