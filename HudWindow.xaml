@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="HeartRater.HudWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid
+        x:Name="RootGrid"
+        Background="Transparent"
+        SizeChanged="OnRootGridSizeChanged"
+        PointerPressed="OnPointerPressed"
+        PointerMoved="OnPointerMoved"
+        PointerReleased="OnPointerReleased"
+        PointerCaptureLost="OnPointerCaptureLost">
+
+        <Border
+            x:Name="CardBorder"
+            CornerRadius="16"
+            Background="#E6202020"
+            BorderBrush="#55FFFFFF"
+            BorderThickness="1"
+            Padding="20,12">
+
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock
+                    x:Name="BpmText"
+                    Text="--"
+                    FontSize="52"
+                    FontWeight="Bold"
+                    Foreground="#88FFFFFF"
+                    HorizontalAlignment="Center"
+                    TextAlignment="Center" />
+                <TextBlock
+                    Text="BPM"
+                    FontSize="11"
+                    Foreground="#80FFFFFF"
+                    HorizontalAlignment="Center" />
+            </StackPanel>
+
+        </Border>
+    </Grid>
+
+</Window>
