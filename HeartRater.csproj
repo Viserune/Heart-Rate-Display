@@ -2,32 +2,18 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.22000.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>HeartRater</RootNamespace>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x64</Platforms>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <UseWinUI>true</UseWinUI>
-    <EnableMsixTooling>true</EnableMsixTooling>
+    <AssemblyName>HeartRater</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <WindowsAppSDKDeploymentManagerInitialize>false</WindowsAppSDKDeploymentManagerInitialize>
-    <AssemblyName>HeartRater</AssemblyName>
-    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
-    <UseWinUIEx>false</UseWinUIEx>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.260224002" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.3233" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="Assets\icon.ico" />
+    <Content Include="Assets\icon.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

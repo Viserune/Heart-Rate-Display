@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.UI.Dispatching;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -43,14 +42,14 @@ public sealed class BleDeviceInfo
 
 /// <summary>
 /// BLE 心率服务：扫描、连接、订阅 0x2A37 心率测量、断线自动重连（不死鸟模式）。
-/// 所有事件统一投递到 UI 线程 DispatcherQueue。
+/// 所有事件统一投递到 UI 线程（通过构造时传入的 dispatch 委托）。
 /// </summary>
 public sealed class BleHeartRateService : IDisposable
 {
     private static readonly Guid HeartRateServiceUuid = GattServiceUuids.HeartRate;
     private static readonly Guid HeartRateMeasurementUuid = GattCharacteristicUuids.HeartRateMeasurement;
 
-    private readonly DispatcherQueue _uiQueue;
+    private readonly Action<Action> _dispatch;
     private readonly object _scanLock = new();
 
     private BluetoothLEAdvertisementWatcher? _watcher;
@@ -69,9 +68,9 @@ public sealed class BleHeartRateService : IDisposable
 
     private BleConnectionState _state = BleConnectionState.Disconnected;
 
-    public BleHeartRateService(DispatcherQueue uiQueue)
+    public BleHeartRateService(Action<Action> dispatch)
     {
-        _uiQueue = uiQueue;
+        _dispatch = dispatch;
     }
 
     // ---- 事件 ----
@@ -585,27 +584,27 @@ public sealed class BleHeartRateService : IDisposable
         }
 
         _state = state;
-        _uiQueue?.TryEnqueue(() => StateChanged?.Invoke(state));
+        _dispatch(() => StateChanged?.Invoke(state));
     }
 
     private void RaiseStatus(string message)
     {
-        _uiQueue?.TryEnqueue(() => StatusMessage?.Invoke(message));
+        _dispatch(() => StatusMessage?.Invoke(message));
     }
 
     private void RaiseError(string message)
     {
-        _uiQueue?.TryEnqueue(() => ErrorOccurred?.Invoke(message));
+        _dispatch(() => ErrorOccurred?.Invoke(message));
     }
 
     private void RaiseDisconnected()
     {
-        _uiQueue?.TryEnqueue(() => Disconnected?.Invoke());
+        _dispatch(() => Disconnected?.Invoke());
     }
 
     private void RaiseHeartRate(int bpm)
     {
-        _uiQueue?.TryEnqueue(() => HeartRateReceived?.Invoke(bpm));
+        _dispatch(() => HeartRateReceived?.Invoke(bpm));
     }
 
     /// <summary>ulong 蓝牙地址 → 标准 MAC 字符串。</summary>

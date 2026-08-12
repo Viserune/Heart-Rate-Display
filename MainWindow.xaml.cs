@@ -1,25 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using HeartRater.Services;
-using Microsoft.UI.Windowing;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Windows.Graphics;
-using Windows.UI;
-using WinRT.Interop;
 
 namespace HeartRater;
 
-public sealed partial class MainWindow : Window
+public partial class MainWindow : Window
 {
-    private const int SW_SHOW = 5;
-
     private readonly SettingsService _settings;
     private readonly BleHeartRateService _ble;
     private readonly HudWindow _hud;
@@ -27,7 +21,6 @@ public sealed partial class MainWindow : Window
 
     private readonly ObservableCollection<BleDeviceInfo> _devices = new();
     private bool _suppressToggleEvents;
-    private int _lastBpm = -1;
 
     public MainWindow(SettingsService settings, BleHeartRateService ble, HudWindow hud, TrayIconService tray)
     {
@@ -37,25 +30,8 @@ public sealed partial class MainWindow : Window
         _tray = tray;
 
         InitializeComponent();
-        Title = "HeartRater 心率助手";
 
         DeviceList.ItemsSource = _devices;
-
-        if (AppWindowTitleBar.IsCustomizationSupported())
-        {
-            AppWindow.TitleBar.ExtendsContentIntoTitleBar = true;
-            AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-            AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-        }
-
-        var size = _settings.Current;
-        if (size.MainWidth >= 300 && size.MainHeight >= 400)
-        {
-            AppWindow.Resize(new SizeInt32((int)size.MainWidth, (int)size.MainHeight));
-        }
-
-        // 关闭 = 隐藏到托盘
-        Closed += OnWindowClosed;
 
         // 蓝牙事件
         _ble.StateChanged += OnBleStateChanged;
@@ -65,54 +41,69 @@ public sealed partial class MainWindow : Window
         _ble.Disconnected += OnBleDisconnected;
 
         // 托盘事件
-        _tray.ShowMainRequested += ShowMain;
-        _tray.ToggleHudRequested += OnTrayToggleHud;
-        _tray.ToggleDemoRequested += OnTrayToggleDemo;
-        _tray.ExitRequested += OnExitRequested;
+        _tray.ShowMainRequested += ShowMainPublic;
+        _tray.ToggleHudRequested += ToggleHudFromTrayPublic;
+        _tray.ToggleDemoRequested += ToggleDemoFromTrayPublic;
+        _tray.ExitRequested += () => Application.Current.Shutdown();
 
         LoadSettingsIntoUi();
-        SetStatus("就绪，点击“扫描设备”开始");
+
+        SourceInitialized += (_, _) =>
+        {
+            var s = _settings.Current;
+            if (s.MainWidth >= 360 && s.MainHeight >= 500)
+            {
+                Width = s.MainWidth;
+                Height = s.MainHeight;
+            }
+        };
     }
+
+    // ==================== 公开入口（托盘 / App 调用） ====================
+
+    public void ShowMainPublic()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+    }
+
+    public void ToggleHudFromTrayPublic()
+    {
+        _settings.Current.HudVisible = !_settings.Current.HudVisible;
+        _settings.Save();
+        _suppressToggleEvents = true;
+        HudToggle.IsChecked = _settings.Current.HudVisible;
+        _suppressToggleEvents = false;
+        ApplyHudVisibility();
+    }
+
+    public void ToggleDemoFromTrayPublic()
+    {
+        _ = ToggleDemoAsync();
+    }
+
+    public void SetStatus(string message)
+    {
+        StatusText.Text = message;
+    }
+
+    // ==================== 设置加载 ====================
 
     private void LoadSettingsIntoUi()
     {
         var s = _settings.Current;
         _suppressToggleEvents = true;
-        AutoConnectToggle.IsOn = s.AutoConnectOnStart;
-        AutoStartToggle.IsOn = s.AutoStartEnabled;
-        AutoReconnectToggle.IsOn = s.AutoReconnect;
-        HudToggle.IsOn = s.HudVisible;
-        ClickThroughToggle.IsOn = s.HudClickThrough;
+        AutoConnectToggle.IsChecked = s.AutoConnectOnStart;
+        AutoStartToggle.IsChecked = s.AutoStartEnabled;
+        AutoReconnectToggle.IsChecked = s.AutoReconnect;
+        HudToggle.IsChecked = s.HudVisible;
+        ClickThroughToggle.IsChecked = s.HudClickThrough;
         _suppressToggleEvents = false;
-    }
-
-    // ==================== 主窗口显示/隐藏 ====================
-
-    public void ShowMain()
-    {
-        ShowWindow(WindowNative.GetWindowHandle(this), SW_SHOW);
-        Activate();
-    }
-
-    // ---- 供 App 调用的公开入口（托盘事件） ----
-    public void ShowMainPublic() => ShowMain();
-
-    public void OnTrayToggleHudPublic() => OnTrayToggleHud();
-
-    public Task ToggleDemoPublicAsync() => ToggleDemoAsync();
-
-    public void SetStatusPublic(string message) => SetStatus(message);
-
-    private void OnWindowClosed(object sender, WindowEventArgs args)
-    {
-        args.Handled = true;
-        HideWindowToTray();
-    }
-
-    public void HideWindowToTray()
-    {
-        AppWindow.Hide();
-        _tray.ShowBalloon("HeartRater", "已最小化到系统托盘，双击图标可重新打开");
     }
 
     // ==================== 蓝牙 UI ====================
@@ -120,8 +111,7 @@ public sealed partial class MainWindow : Window
     private async void OnScanClicked(object sender, RoutedEventArgs e)
     {
         ScanButton.IsEnabled = false;
-        LoadingOverlay.Visibility = Visibility.Visible;
-        OverlayText.Text = "正在扫描蓝牙设备…";
+        SetStatus("正在扫描蓝牙设备…");
 
         try
         {
@@ -132,14 +122,12 @@ public sealed partial class MainWindow : Window
                 _devices.Add(d);
             }
 
-            if (_devices.Count == 0)
-            {
-                SetStatus("未发现设备，请确认设备已开机且蓝牙已开启");
-            }
+            SetStatus(_devices.Count == 0
+                ? "未发现设备，请确认设备已开机且蓝牙已开启"
+                : $"扫描完成，发现 {_devices.Count} 个设备");
         }
         finally
         {
-            LoadingOverlay.Visibility = Visibility.Collapsed;
             ScanButton.IsEnabled = true;
         }
     }
@@ -147,7 +135,6 @@ public sealed partial class MainWindow : Window
     private void OnDeviceFilterChanged(object sender, TextChangedEventArgs e)
     {
         var filter = DeviceFilterBox.Text?.Trim() ?? "";
-        DeviceList.ItemsSource = null;
         var source = string.IsNullOrEmpty(filter)
             ? _devices
             : new ObservableCollection<BleDeviceInfo>(
@@ -182,9 +169,7 @@ public sealed partial class MainWindow : Window
     private async void OnDisconnectClicked(object sender, RoutedEventArgs e)
     {
         await _ble.DisconnectAsync();
-        HeartRateDisplay.Text = "--";
-        HeartRateDisplay.Foreground = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF));
-        _lastBpm = -1;
+        SetHeartRateDisplay(-1);
     }
 
     // ==================== 蓝牙事件 ====================
@@ -202,7 +187,6 @@ public sealed partial class MainWindow : Window
 
     private void OnHeartRateReceived(int bpm)
     {
-        _lastBpm = bpm;
         HeartRateDisplay.Text = bpm.ToString();
         HeartRateDisplay.Foreground = new SolidColorBrush(HrColors.GetColor(bpm));
         _hud.SetHeartRate(bpm);
@@ -216,24 +200,30 @@ public sealed partial class MainWindow : Window
 
     private void OnBleDisconnected()
     {
+        SetHeartRateDisplay(-1);
         _hud.SetHeartRate(-1);
-        HeartRateDisplay.Text = "--";
-        HeartRateDisplay.Foreground = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF));
-        _lastBpm = -1;
         if (_settings.Current.AutoReconnect)
         {
             _tray.ShowBalloon("HeartRater", "连接已断开，正在自动重连…");
         }
     }
 
+    private void SetHeartRateDisplay(int bpm)
+    {
+        if (bpm <= 0)
+        {
+            HeartRateDisplay.Text = "--";
+            HeartRateDisplay.Foreground = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99));
+            return;
+        }
+
+        HeartRateDisplay.Text = bpm.ToString();
+        HeartRateDisplay.Foreground = new SolidColorBrush(HrColors.GetColor(bpm));
+    }
+
     // ==================== 演示模式 ====================
 
     private async void OnDemoClicked(object sender, RoutedEventArgs e)
-    {
-        await ToggleDemoAsync();
-    }
-
-    private async void OnTrayToggleDemo()
     {
         await ToggleDemoAsync();
     }
@@ -244,8 +234,7 @@ public sealed partial class MainWindow : Window
         {
             await _ble.StopDemoAsync();
             _tray.DemoRunning = false;
-            HeartRateDisplay.Text = "--";
-            HeartRateDisplay.Foreground = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF));
+            SetHeartRateDisplay(-1);
             SetStatus("已退出演示模式");
         }
         else
@@ -265,7 +254,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _settings.Current.HudVisible = HudToggle.IsOn;
+        _settings.Current.HudVisible = HudToggle.IsChecked == true;
         _settings.Save();
         ApplyHudVisibility();
     }
@@ -277,17 +266,9 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _settings.Current.HudClickThrough = ClickThroughToggle.IsOn;
+        _settings.Current.HudClickThrough = ClickThroughToggle.IsChecked == true;
         _settings.Save();
-        _hud.ClickThrough = ClickThroughToggle.IsOn;
-    }
-
-    private void OnTrayToggleHud()
-    {
-        _settings.Current.HudVisible = !_settings.Current.HudVisible;
-        _settings.Save();
-        HudToggle.IsOn = _settings.Current.HudVisible; // 触发 Toggled（suppress 已关闭）
-        ApplyHudVisibility();
+        _hud.ClickThrough = ClickThroughToggle.IsChecked == true;
     }
 
     private void ApplyHudVisibility()
@@ -311,7 +292,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _settings.Current.AutoConnectOnStart = AutoConnectToggle.IsOn;
+        _settings.Current.AutoConnectOnStart = AutoConnectToggle.IsChecked == true;
         _settings.Save();
     }
 
@@ -322,10 +303,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        AutoStartService.SetEnabled(AutoStartToggle.IsOn);
-        _settings.Current.AutoStartEnabled = AutoStartToggle.IsOn;
+        var enabled = AutoStartToggle.IsChecked == true;
+        AutoStartService.SetEnabled(enabled);
+        _settings.Current.AutoStartEnabled = enabled;
         _settings.Save();
-        SetStatus(AutoStartToggle.IsOn ? "已开启开机自启" : "已关闭开机自启");
+        SetStatus(enabled ? "已开启开机自启" : "已关闭开机自启");
     }
 
     private void OnAutoReconnectToggled(object sender, RoutedEventArgs e)
@@ -335,22 +317,20 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _settings.Current.AutoReconnect = AutoReconnectToggle.IsOn;
+        _settings.Current.AutoReconnect = AutoReconnectToggle.IsChecked == true;
         _settings.Save();
     }
 
-    // ==================== 退出 ====================
+    // ==================== 关闭行为 ====================
 
-    private void OnExitRequested()
+    private void OnWindowClosing(object sender, CancelEventArgs e)
     {
-        App.Current?.Exit();
+        // 关闭主窗口 → 隐藏到托盘（不退出）
+        e.Cancel = true;
+        _settings.Current.MainWidth = ActualWidth;
+        _settings.Current.MainHeight = ActualHeight;
+        _settings.Save();
+        Hide();
+        _tray.ShowBalloon("HeartRater", "已最小化到系统托盘，双击图标可重新打开");
     }
-
-    private void SetStatus(string message)
-    {
-        StatusText.Text = message;
-    }
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 }

@@ -1,64 +1,54 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using HeartRater.Services;
-using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml;
 
 namespace HeartRater;
 
 public partial class App : Application
 {
-    private readonly string[] _args;
-    private readonly DispatcherQueue _uiQueue;
-    private MainWindow? _mainWindow;
+    private MainWindow? _main;
     private HudWindow? _hud;
     private TrayIconService? _tray;
     private BleHeartRateService? _ble;
     private SettingsService? _settings;
 
-    public App(string[] args)
+    protected override void OnStartup(StartupEventArgs e)
     {
-        _args = args;
-        _uiQueue = DispatcherQueue.GetForCurrentThread();
-        InitializeComponent();
-        UnhandledException += (_, e) =>
-        {
-            System.Diagnostics.Debug.WriteLine($"未处理异常: {e.Exception}");
-            e.Handled = true;
-        };
-    }
+        base.OnStartup(e);
 
-    protected override async void OnLaunched(LaunchActivatedEventArgs args)
-    {
+        // 关闭主窗口不退出（驻留托盘），仅托盘“退出”真正退出
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
         _settings = new SettingsService();
-        _ble = new BleHeartRateService(_uiQueue);
+        Action<Action> dispatch = a => Dispatcher.BeginInvoke(a);
+        _ble = new BleHeartRateService(dispatch);
         _hud = new HudWindow(_settings);
-        _tray = new TrayIconService(_uiQueue, IconPath);
-        _mainWindow = new MainWindow(_settings, _ble, _hud, _tray);
+        _tray = new TrayIconService(dispatch, IconPath);
+        _main = new MainWindow(_settings, _ble, _hud, _tray);
 
         // 托盘事件
         _tray.ShowMainRequested += ShowMainWindow;
-        _tray.ToggleHudRequested += () => _mainWindow?.OnTrayToggleHudPublic();
-        _tray.ToggleDemoRequested += () => _ = _mainWindow?.ToggleDemoPublicAsync();
-        _tray.ExitRequested += () => Exit();
+        _tray.ToggleHudRequested += () => _main?.ToggleHudFromTrayPublic();
+        _tray.ToggleDemoRequested += () => _main?.ToggleDemoFromTrayPublic();
+        _tray.ExitRequested += Shutdown;
 
         _tray.Show();
 
         // 启动流程
-        var minimized = _args.Contains("--minimized");
+        var minimized = e.Args.Contains("--minimized");
         if (!minimized)
         {
-            _mainWindow.Activate();
+            _main.Show();
         }
 
-        _hud.ApplyHudFromSettingsPublic();
+        _hud.ApplyHudFromSettings();
 
         if (_settings.Current.AutoConnectOnStart && !string.IsNullOrEmpty(_settings.Current.LastDeviceId))
         {
-            _mainWindow.SetStatusPublic("正在自动连接上次设备…");
+            _main.SetStatus("正在自动连接上次设备…");
             _ = TryAutoConnectAsync();
         }
     }
@@ -79,7 +69,7 @@ public partial class App : Application
 
     private void ShowMainWindow()
     {
-        _mainWindow?.ShowMainPublic();
+        _main?.ShowMainPublic();
     }
 
     private string IconPath

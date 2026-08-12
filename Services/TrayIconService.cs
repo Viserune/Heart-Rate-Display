@@ -1,12 +1,11 @@
 using System;
 using System.Runtime.InteropServices;
-using Microsoft.UI.Dispatching;
 
 namespace HeartRater.Services;
 
 /// <summary>
 /// 系统托盘图标：Shell_NotifyIconW 自绘实现（零第三方依赖）。
-/// 在独立 STA 线程上创建隐藏窗口 + 消息循环，回调事件统一投递到 UI 线程 DispatcherQueue。
+/// 在独立 STA 线程上创建隐藏窗口 + 消息循环，回调事件统一投递到 UI 线程（dispatch 委托）。
 /// </summary>
 public sealed class TrayIconService : IDisposable
 {
@@ -49,7 +48,7 @@ public sealed class TrayIconService : IDisposable
 
     // 窗口过程委托必须存根，防止被 GC 回收
     private readonly WndProcDelegate _wndProc;
-    private readonly DispatcherQueue _uiQueue;
+    private readonly Action<Action> _dispatch;
     private readonly string _iconPath;
     private readonly object _lock = new();
 
@@ -60,9 +59,9 @@ public sealed class TrayIconService : IDisposable
     private volatile bool _demoRunning;
     private bool _disposed;
 
-    public TrayIconService(DispatcherQueue uiQueue, string iconPath)
+    public TrayIconService(Action<Action> dispatch, string iconPath)
     {
-        _uiQueue = uiQueue;
+        _dispatch = dispatch;
         _iconPath = iconPath;
         _wndProc = WndProc;
     }
@@ -309,7 +308,7 @@ public sealed class TrayIconService : IDisposable
             return;
         }
 
-        _uiQueue?.TryEnqueue(() => action());
+        _dispatch(action);
     }
 
     public void Dispose()
