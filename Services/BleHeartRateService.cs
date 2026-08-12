@@ -38,6 +38,9 @@ public sealed class BleDeviceInfo
     public string DisplayName =>
         (HasHeartRateService ? "♥ " : "") + (string.IsNullOrEmpty(Name) ? "未知设备" : Name) +
         (string.IsNullOrEmpty(Address) ? "" : $"  ({Address})");
+
+    /// <summary>UIA 自动化/调试输出使用 DisplayName（WPF ListBox 的 UIA Name 缺省走 ToString）。</summary>
+    public override string ToString() => DisplayName;
 }
 
 /// <summary>
