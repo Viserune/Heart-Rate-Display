@@ -7,7 +7,7 @@
 ## 功能
 
 - **蓝牙心率**：标准 BLE 心率服务（Heart Rate Service `0x180D` / 心率测量特征 `0x2A37`），兼容绝大多数心率设备；扫描时**自动检测并只显示带心率广播的设备**，其他设备自动过滤
-- **透明桌面悬浮窗 HUD**：窗口背景完全透明（仅显示心率数字），置顶、可拖动，颜色随心率变化（绿 <100 → 黄 100-119 → 橙 120-139 → 红 ≥140），支持点击穿透
+- **透明桌面悬浮窗 HUD**：窗口背景完全透明（仅显示心率数字，无阴影特效，不触发 WPF 软件渲染路径）；置顶、可拖动，颜色随心率变化（绿 <100 → 黄 100-119 → 橙 120-139 → 红 ≥140），支持点击穿透
 - **悬浮窗锁定**：锁定后禁拖动并强制点击穿透（全屏游戏/视频时不会误拖动、可点击到后面）；位置自动记忆，关闭重开后回到上次位置
 - **系统托盘**：双击恢复主界面，右键菜单（显示主界面 / 悬浮窗 / 锁定悬浮窗 / 退出），连接状态气泡通知
 - **开机托盘启动**：设置里一键开启，写入 `HKCU\...\CurrentVersion\Run`，以 `--minimized` 启动驻留托盘
@@ -49,22 +49,27 @@ dotnet publish -c Release -r win-x64 --self-contained true
 
 ```
 HeartRater/
-├── App.xaml(.cs)              # 应用生命周期、托盘接线、--minimized
-├── MainWindow.xaml(.cs)       # 主界面：扫描/连接/设置
+├── App.xaml(.cs)              # 应用生命周期、VM 装配、托盘接线、--minimized
+├── MainWindow.xaml(.cs)       # 主界面：扫描/连接/设置（绑定 MainViewModel，动画等 UI 行为留 code-behind）
 ├── HudWindow.xaml(.cs)        # 透明悬浮窗（AllowsTransparency/置顶/拖动/穿透）
-├── HrColors.cs                # 心率颜色映射
+├── HrColors.cs                # 心率颜色映射（Frozen Brush 缓存，零分配）
+├── ViewModels/
+│   ├── ObservableObject.cs    # 手写 INPC 基类（零第三方依赖）
+│   ├── RelayCommand.cs        # 手写 ICommand
+│   ├── MainViewModel.cs       # 主界面 VM：扫描/连接/心率显示/设置开关
+│   └── HudViewModel.cs        # 悬浮窗 VM：心率数字与颜色
 ├── Services/
 │   ├── BleHeartRateService.cs # BLE 扫描/连接/订阅/自动重连
 │   ├── HeartRateParser.cs     # 0x2A37 心率数据解析
 │   ├── TrayIconService.cs     # 托盘图标（Shell_NotifyIconW）
-│   ├── SettingsService.cs     # 设置持久化（JSON）
+│   ├── SettingsService.cs     # 设置持久化（JSON，属性变更自动落盘）
 │   └── AutoStartService.cs    # 开机自启（注册表）
 └── smoke-test.ps1             # 功能冒烟测试
 ```
 
 ## 技术栈
 
-- WPF（.NET 8，C#）
+- WPF（.NET 8，C#），MVVM（手写 INPC/ICommand，无第三方库）
 - Windows 蓝牙 LE API（`Windows.Devices.Bluetooth`）
 - 托盘：手写 `Shell_NotifyIconW`（零第三方 UI 依赖）
 
