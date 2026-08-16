@@ -12,7 +12,8 @@
     <!-- 文字 -->
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#9D9D9D" />
-    <SolidColorBrush x:Key="TextOnAccentBrush" Color="#FFFFFF" />
+    <!-- 强调色文字：AccentBrush 为浅蓝，配深色文字保证 ≥4.5:1 对比 -->
+    <SolidColorBrush x:Key="TextOnAccentBrush" Color="#0F0F0F" />
     <SolidColorBrush x:Key="TextDisabledBrush" Color="#6E6E6E" />
 
     <!-- 强调色 -->
