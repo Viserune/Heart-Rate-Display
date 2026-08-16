@@ -23,7 +23,8 @@ public class B {
 }
 "@
 
-$exe = "D:\Study\Projects\Heartrate\HeartRater\bin\Debug\net8.0-windows10.0.19041.0\HeartRater.exe"
+# 基于脚本所在目录自动定位 exe（脚本位于仓库根，产物在 bin 下）
+$exe = Join-Path $PSScriptRoot "bin\Debug\net8.0-windows10.0.19041.0\HeartRater.exe"
 if (-not (Test-Path $exe)) { Write-Output "FAIL: 未找到 exe"; exit 1 }
 
 $results = [System.Collections.Generic.List[string]]::new()

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using HeartRater.Services;
+using HeartRater.ViewModels;
 
 namespace HeartRater;
 
@@ -11,6 +12,8 @@ public partial class App : Application
 {
     private MainWindow? _main;
     private HudWindow? _hud;
+    private MainViewModel? _mainVm;
+    private HudViewModel? _hudVm;
     private TrayIconService? _tray;
     private BleHeartRateService? _ble;
     private SettingsService? _settings;
@@ -18,6 +21,13 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // 后台任务未观察异常：记录 + 防止进程崩溃（重连/自动连接等 fire-and-forget 任务）
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            LogError(args.Exception);
+            args.SetObserved();
+        };
 
         // 关闭主窗口不退出（驻留托盘），仅托盘“退出”真正退出
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -28,14 +38,17 @@ public partial class App : Application
         _settings = new SettingsService();
         Action<Action> dispatch = a => Dispatcher.BeginInvoke(a);
         _ble = new BleHeartRateService(dispatch);
-        _hud = new HudWindow(_settings);
+        _hudVm = new HudViewModel(_ble);
+        _hud = new HudWindow(_settings.Current, _hudVm);
+        _mainVm = new MainViewModel(_ble, _settings.Current);
         _tray = new TrayIconService(dispatch, IconPath);
-        _main = new MainWindow(_settings, _ble, _hud, _tray);
+        _main = new MainWindow(_mainVm, _hud, _tray);
+        _main.DataContext = _mainVm;
 
         // 托盘事件
         _tray.ShowMainRequested += ShowMainWindow;
-        _tray.ToggleHudRequested += () => _main?.ToggleHudFromTrayPublic();
-        _tray.ToggleLockRequested += () => _main?.ToggleLockFromTrayPublic();
+        _tray.ToggleHudRequested += _mainVm.ToggleHud;
+        _tray.ToggleLockRequested += _mainVm.ToggleLock;
         _tray.ExitRequested += Shutdown;
 
         _tray.Show();
@@ -51,28 +64,43 @@ public partial class App : Application
 
         if (_settings.Current.AutoConnectOnStart && !string.IsNullOrEmpty(_settings.Current.LastDeviceId))
         {
-            _main.SetStatus("正在自动连接上次设备…");
-            _ = TryAutoConnectAsync();
-        }
-    }
-
-    private async Task TryAutoConnectAsync()
-    {
-        var settings = _settings!;
-        var ok = await _ble!.AutoConnectLastAsync(
-            settings.Current.LastDeviceId!,
-            settings.Current.LastDeviceName,
-            autoReconnect: settings.Current.AutoReconnect);
-
-        if (!ok)
-        {
-            _tray?.ShowBalloon("HeartRater", "自动连接失败：未检测到上次连接的设备，请在主界面重新连接");
+            _ = _mainVm.AutoConnectLastAsync();
         }
     }
 
     private void ShowMainWindow()
     {
         _main?.ShowMainPublic();
+    }
+
+    /// <summary>UI 线程未处理异常：记录 + 友好提示，阻止 WPF 默认崩溃对话框。</summary>
+    private void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        LogError(e.Exception);
+        MessageBox.Show(
+            "程序遇到未预期的错误，已记录并继续运行。\n\n" +
+            $"详细信息：{e.Exception.Message}",
+            "HeartRater",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+        e.Handled = true;
+    }
+
+    /// <summary>异常落盘到 %LOCALAPPDATA%\HeartRater\error.log（追加），便于真机排查。</summary>
+    private static void LogError(Exception ex)
+    {
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HeartRater");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(
+                Path.Combine(dir, "error.log"),
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {ex}{Environment.NewLine}");
+        }
+        catch
+        {
+            // 日志写入失败不影响主流程
+        }
     }
 
     private string IconPath

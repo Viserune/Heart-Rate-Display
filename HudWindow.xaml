@@ -18,17 +18,25 @@
         PreviewMouseMove="OnPointerMoved"
         PreviewMouseLeftButtonUp="OnPointerReleased">
 
-    <!-- 透明窗口：AllowsTransparency 启用逐像素 alpha；背景与卡片全透明，仅心率文字不透明 -->
-    <Border x:Name="CardBorder" Background="Transparent" Padding="20,10">
+    <!--
+        完全透明背景（仅显示心率数字），无 DropShadowEffect → 不进入 WPF 软件渲染路径，
+        长时间挂屏无 GPU/CPU 持续开销。
+        数字下方叠一层黑色硬描影（双 TextBlock，同样无 Effect）：亮色游戏画面上仍可读。
+    -->
+    <Border x:Name="CardBorder" Background="Transparent">
         <StackPanel VerticalAlignment="Center">
-            <TextBlock x:Name="BpmText" Text="--" FontSize="48" FontWeight="Bold"
-                       Foreground="#C0FFFFFF" HorizontalAlignment="Center"
-                       FontFamily="Segoe UI Variable Display, Segoe UI">
-                <TextBlock.Effect>
-                    <DropShadowEffect Color="#000000" BlurRadius="6" ShadowDepth="1" Opacity="0.45" />
-                </TextBlock.Effect>
-            </TextBlock>
-            <TextBlock Text="BPM" FontSize="10" Foreground="#80FFFFFF" HorizontalAlignment="Center" />
+            <Grid>
+                <TextBlock x:Name="BpmShadow" Text="{Binding BpmText}" FontSize="52" FontWeight="Bold"
+                           Foreground="#B3000000" Margin="0,2,0,0" HorizontalAlignment="Center"
+                           FontFamily="Segoe UI Variable Display, Segoe UI" />
+                <TextBlock x:Name="BpmText" Text="{Binding BpmText}" FontSize="52" FontWeight="Bold"
+                           Foreground="{Binding BpmBrush}" HorizontalAlignment="Center"
+                           FontFamily="Segoe UI Variable Display, Segoe UI" />
+            </Grid>
+            <Grid Margin="0,-2,0,0">
+                <TextBlock Text="BPM" FontSize="10" Foreground="#99000000" HorizontalAlignment="Center" />
+                <TextBlock Text="BPM" FontSize="10" Foreground="#E6FFFFFF" HorizontalAlignment="Center" />
+            </Grid>
         </StackPanel>
     </Border>
 </Window>

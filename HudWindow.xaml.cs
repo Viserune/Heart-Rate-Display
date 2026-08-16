@@ -6,13 +6,13 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using HeartRater.Services;
+using HeartRater.ViewModels;
 
 namespace HeartRater;
 
 /// <summary>
 /// 桌面悬浮窗（HUD）：置顶、无边框、背景透明、可拖动、可点击穿透、圆角。
-/// 心率颜色：绿 → 黄 → 橙 → 红。
-/// 透明实现：WPF 原生 AllowsTransparency（逐像素 alpha 合成），无需 DWM hack。
+/// 心率数字/颜色由 HudViewModel 绑定驱动；窗口样式/拖动等原生行为留在 code-behind。
 /// </summary>
 public partial class HudWindow : Window
 {
@@ -28,7 +28,7 @@ public partial class HudWindow : Window
 
     private static readonly IntPtr HwndTopmost = new(-1);
 
-    private readonly SettingsService _settings;
+    private readonly AppSettings _settings;
     private IntPtr _hwnd;
     private bool _locked;
     private bool _dragging;
@@ -36,23 +36,32 @@ public partial class HudWindow : Window
     private double _dragStartLeft;
     private double _dragStartTop;
 
-    public HudWindow(SettingsService settings)
+    public HudWindow(AppSettings settings, HudViewModel viewModel)
     {
         _settings = settings;
-        _locked = settings.Current.HudLocked;
+        _locked = settings.HudLocked;
         InitializeComponent();
+        DataContext = viewModel;
 
         // 默认停靠屏幕右上角
         var workArea = SystemParameters.WorkArea;
         Left = workArea.Right - Width - 16;
         Top = workArea.Top + 12;
 
-        var s = settings.Current;
-        if (s.HudX >= 0 && s.HudY >= 0)
+        if (settings.HudX >= 0 && settings.HudY >= 0)
         {
-            Left = s.HudX;
-            Top = s.HudY;
+            Left = settings.HudX;
+            Top = settings.HudY;
         }
+
+        // 锁定状态变化（托盘/主界面开关/绑定）→ 窗口样式
+        settings.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppSettings.HudLocked))
+            {
+                Locked = settings.HudLocked;
+            }
+        };
 
         Loaded += OnLoaded;
         Closing += OnClosing;
@@ -96,25 +105,10 @@ public partial class HudWindow : Window
         Hide();
     }
 
-    /// <summary>设置心率显示（bpm &lt;= 0 时显示占位符）。</summary>
-    public void SetHeartRate(int bpm)
-    {
-        if (bpm <= 0)
-        {
-            BpmText.Text = "--";
-            BpmText.Foreground = new SolidColorBrush(Color.FromArgb(0xC0, 0xFF, 0xFF, 0xFF));
-            return;
-        }
-
-        var color = HrColors.GetColor(bpm);
-        BpmText.Text = bpm.ToString();
-        BpmText.Foreground = new SolidColorBrush(color);
-    }
-
     /// <summary>按设置应用悬浮窗显示状态（供 App 启动时调用）。</summary>
     public void ApplyHudFromSettings()
     {
-        if (_settings.Current.HudVisible)
+        if (_settings.HudVisible)
         {
             ShowHud();
         }
@@ -202,15 +196,14 @@ public partial class HudWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>把当前悬浮窗位置写入设置并持久化。</summary>
+    /// <summary>把当前悬浮窗位置写入设置（PropertyChanged 触发自动落盘）。</summary>
     private void SavePosition()
     {
-        _settings.Current.HudX = Left;
-        _settings.Current.HudY = Top;
-        _settings.Save();
+        _settings.HudX = Left;
+        _settings.HudY = Top;
     }
 
-    private void OnClosing(object sender, CancelEventArgs e)
+    private void OnClosing(object? sender, CancelEventArgs e)
     {
         // 应用退出（托盘“退出”）时也保存一次位置，确保关闭后再开启回到原位
         SavePosition();
